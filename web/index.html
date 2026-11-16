@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MIDI Button Setup</title>
+<meta name="description" content="Configure your MIDI Button from the browser over USB.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%233b82f6'/%3E%3Ccircle cx='16' cy='16' r='8' fill='%23fff' fill-opacity='.85'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f5f6f8; --card: #ffffff; --text: #16181d; --muted: #646b78; --line: #e3e6eb;
+  --field: #f0f2f5; --accent: #2f6fed; --accent-text: #fff; --warn: #b45309; --danger: #c42b2b;
+  --ok: #15803d; --pad: #dfe3ea; --pad-edge: #c8ced8; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 16px rgba(16,24,40,.05);
+  --type: #2f6fed;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101216; --card: #181b21; --text: #e9ecf1; --muted: #949cab; --line: #2a2f38;
+    --field: #22262e; --accent: #4c86ff; --pad: #262a33; --pad-edge: #333945; --warn: #f59e0b;
+    --danger: #f06363; --ok: #34d399; --shadow: none; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101216; --card: #181b21; --text: #e9ecf1; --muted: #949cab; --line: #2a2f38;
+  --field: #22262e; --accent: #4c86ff; --pad: #262a33; --pad-edge: #333945; --warn: #f59e0b;
+  --danger: #f06363; --ok: #34d399; --shadow: none; color-scheme: dark;
+}
+[data-type="0"] { --type: #3b82f6; }
+[data-type="1"] { --type: #10b981; }
+[data-type="2"] { --type: #f59e0b; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+main { max-width: 760px; margin: 0 auto; padding: 24px 16px 120px; }
+header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+header h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+.logo { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); position: relative; flex: none; }
+.logo::after { content: ""; position: absolute; inset: 8px; border-radius: 50%; background: #fff; opacity: .85; }
+.pill { margin-left: auto; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.pill.on .dot { background: var(--ok); }
+.pill.warn .dot { background: var(--warn); }
+
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; box-shadow: var(--shadow); margin-bottom: 16px; }
+.card h2 { font-size: 15px; margin: 0 0 4px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+p { margin: 0 0 12px; }
+p:last-child { margin-bottom: 0; }
+
+button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--line); background: var(--field); color: var(--text); padding: 9px 16px; }
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; font-weight: 600; }
+button.primary:hover:not(:disabled) { filter: brightness(1.08); border-color: transparent; }
+button.link { background: none; border: none; padding: 0; color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.connect { text-align: center; padding: 40px 20px; }
+.connect .big { font-size: 16px; padding: 12px 28px; margin: 8px 0 14px; }
+.connect ul { text-align: left; display: inline-block; margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+.notice { border-radius: 10px; padding: 10px 12px; font-size: 14px; margin-top: 14px; background: var(--field); text-align: left; }
+.notice.error { color: var(--danger); }
+
+.grid { display: grid; grid-template-columns: 220px 1fr; gap: 16px; align-items: start; }
+@media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+
+.preview { text-align: center; }
+.pad {
+  width: 148px; height: 148px; border-radius: 50%; margin: 6px auto 14px; position: relative;
+  background: radial-gradient(circle at 50% 38%, var(--card), var(--pad));
+  border: 6px solid var(--pad-edge); transition: box-shadow .08s, border-color .08s, background .08s;
+}
+.pad::after { content: ""; position: absolute; inset: 34px; border-radius: 50%; border: 2px solid var(--pad-edge); transition: border-color .08s, background .08s; }
+.pad.lit { border-color: var(--type); box-shadow: 0 0 0 6px color-mix(in srgb, var(--type) 22%, transparent), 0 0 36px color-mix(in srgb, var(--type) 55%, transparent); }
+.pad.lit::after { border-color: var(--type); background: color-mix(in srgb, var(--type) 30%, transparent); }
+.last { font-variant-numeric: tabular-nums; min-height: 1.5em; font-size: 14px; }
+.log { list-style: none; margin: 12px 0 0; padding: 12px 0 0; border-top: 1px solid var(--line); font: 12px/1.7 ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--muted); text-align: left; min-height: 6.8em; }
+
+.field { margin-bottom: 18px; }
+.field:last-child { margin-bottom: 0; }
+.label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+.seg { display: flex; background: var(--field); border-radius: 10px; padding: 3px; gap: 3px; }
+.seg button { flex: 1; border: none; background: transparent; padding: 7px 8px; border-radius: 8px; color: var(--muted); font-size: 14px; }
+.seg button[aria-pressed="true"] { background: var(--card); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.hint { font-size: 13px; color: var(--muted); margin-top: 6px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 420px) { .row { grid-template-columns: 1fr; } }
+select, input[type="number"] {
+  font: inherit; color: var(--text); background: var(--field); border: 1px solid transparent; border-radius: 10px;
+  padding: 8px 10px; width: 100%; font-variant-numeric: tabular-nums;
+}
+select:focus, input:focus { border-color: var(--accent); outline: none; }
+.num { display: flex; align-items: center; gap: 10px; }
+.num input { width: 90px; flex: none; }
+.num .tag { font-weight: 600; font-variant-numeric: tabular-nums; }
+.range { display: flex; align-items: center; gap: 12px; }
+.range input { flex: 1; accent-color: var(--type); }
+.range output { width: 2.5em; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+.bar {
+  position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--line);
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+}
+.bar .inner { max-width: 760px; margin: 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bar .state { margin-right: auto; font-size: 14px; }
+.bar .state.dirty { color: var(--warn); font-weight: 600; }
+.device-line { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--muted); }
+.device-line select { width: auto; padding: 4px 8px; font-size: 13px; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="logo" aria-hidden="true"></div>
+    <h1>MIDI Button</h1>
+    <div class="pill" id="pill"><span class="dot"></span><span id="pillText">Not connected</span></div>
+  </header>
+
+  <!-- not connected -->
+  <section class="card connect" id="connectView">
+    <h2>Set up your button</h2>
+    <p class="muted">Plug the button into this computer or phone with USB, then connect.</p>
+    <button class="primary big" id="connectBtn">Connect</button>
+    <div>
+      <ul>
+        <li>Your browser will ask to use MIDI devices. Allow it.</li>
+        <li>Works in Chrome and Edge (desktop and Android). Safari and iOS can’t do this.</li>
+        <li>Close music apps that hold MIDI ports open if the button isn’t found.</li>
+      </ul>
+    </div>
+    <div class="notice" id="connectMsg" hidden></div>
+  </section>
+
+  <!-- connected -->
+  <div id="deviceView" hidden>
+    <div class="grid">
+      <section class="card preview" id="previewCard">
+        <h2>Try it</h2>
+        <p class="muted small">Press your button.</p>
+        <div class="pad" id="pad" aria-hidden="true"></div>
+        <div class="last" id="last" aria-live="polite">&nbsp;</div>
+        <ul class="log" id="log"></ul>
+      </section>
+
+      <section class="card" id="settingsCard">
+        <div class="field">
+          <span class="label" id="typeLabel">When pressed, send</span>
+          <div class="seg" role="group" aria-labelledby="typeLabel" id="typeSeg">
+            <button type="button" data-v="0">Note</button>
+            <button type="button" data-v="1">Control change</button>
+            <button type="button" data-v="2">Program change</button>
+          </div>
+        </div>
+
+        <div class="field" data-for="0">
+          <label class="label" for="note">Note</label>
+          <div class="num">
+            <input type="number" id="note" min="0" max="127" step="1">
+            <span class="tag" id="noteName"></span>
+            <span class="small muted">middle C is C4 (60)</span>
+          </div>
+        </div>
+        <div class="field" data-for="0">
+          <label class="label" for="velocity">Velocity</label>
+          <div class="range"><input type="range" id="velocity" min="1" max="127"><output id="velocityOut"></output></div>
+        </div>
+
+        <div class="field" data-for="1">
+          <label class="label" for="cc">Controller</label>
+          <div class="num">
+            <input type="number" id="cc" min="0" max="127" step="1">
+            <span class="small muted" id="ccName"></span>
+          </div>
+        </div>
+        <div class="field" data-for="1">
+          <label class="label" for="ccOn">Value when pressed</label>
+          <div class="range"><input type="range" id="ccOn" min="0" max="127"><output id="ccOnOut"></output></div>
+        </div>
+        <div class="field" data-for="1">
+          <label class="label" for="ccOff">Value when released</label>
+          <div class="range"><input type="range" id="ccOff" min="0" max="127"><output id="ccOffOut"></output></div>
+        </div>
+
+        <div class="field" data-for="2">
+          <label class="label" for="program">Program</label>
+          <div class="num"><input type="number" id="program" min="1" max="128" step="1"><span class="small muted">1–128</span></div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label class="label" for="channel">MIDI channel</label>
+            <select id="channel"></select>
+          </div>
+          <div class="field" data-for="0 1">
+            <span class="label" id="modeLabel">Behaviour</span>
+            <div class="seg" role="group" aria-labelledby="modeLabel" id="modeSeg">
+              <button type="button" data-v="0">Momentary</button>
+              <button type="button" data-v="1">Toggle</button>
+            </div>
+          </div>
+        </div>
+        <p class="hint" id="modeHint"></p>
+      </section>
+    </div>
+
+    <section class="card">
+      <div class="device-line">
+        <span id="deviceSelectWrap" hidden><select id="deviceSelect" aria-label="Device"></select></span>
+        <span id="devPort"></span>
+        <span id="devFw"></span>
+        <span id="devId"></span>
+        <button class="link small" id="resetBtn">Restore defaults</button>
+      </div>
+    </section>
+  </div>
+</main>
+
+<div class="bar" id="bar" hidden>
+  <div class="inner">
+    <span class="state" id="saveState">Saved on the button</span>
+    <button class="primary" id="saveBtn" disabled>Save to button</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------- protocol
+// SysEx: F0 7D 4D 42 <cmd> <payload> F7. See the README for the full table.
+const HDR = [0x7D, 0x4D, 0x42];
+const CMD = { HELLO: 1, CONFIG: 2, SET: 3, SAVE: 4, DEFAULTS: 5, ERROR: 0x7F };
+const ERRORS = { 1: "bad message length", 2: "value out of range", 3: "flash write failed", 4: "unknown command" };
+const NAME_RE = /midi button/i;
+
+const NOTE_NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+const noteName = n => NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1);
+const CC_NAMES = { 0: "Bank select", 1: "Modulation", 2: "Breath", 4: "Foot controller", 5: "Portamento time",
+  7: "Volume", 8: "Balance", 10: "Pan", 11: "Expression", 64: "Sustain pedal", 65: "Portamento",
+  66: "Sostenuto", 67: "Soft pedal", 69: "Hold 2", 120: "All sound off", 121: "Reset controllers", 123: "All notes off" };
+
+// ---------------------------------------------------------------- state
+let access = null;
+let devices = [];           // [{input, output, info}]
+let dev = null;             // current device
+let cfg = null;             // {type, channel, number, onValue, offValue, mode}
+let dirty = false;
+let waiters = [];           // pending replies
+let setTimer = 0;
+let rescanTimer = 0;
+
+const $ = id => document.getElementById(id);
+
+// ---------------------------------------------------------------- MIDI plumbing
+function sysex(output, cmd, payload = []) {
+  output.send([0xF0, ...HDR, cmd, ...payload.map(b => b & 0x7F), 0xF7]);
+}
+
+function parseReply(data) {
+  if (data.length < 6 || data[0] !== 0xF0 || data[data.length - 1] !== 0xF7) return null;
+  for (let i = 0; i < 3; i++) if (data[1 + i] !== HDR[i]) return null;
+  return { cmd: data[4], payload: Array.from(data.slice(5, -1)) };
+}
+
+function waitFor(input, test, ms = 1000) {
+  return new Promise((resolve, reject) => {
+    const w = { input, test, resolve, timer: setTimeout(() => { waiters = waiters.filter(x => x !== w); reject(new Error("timeout")); }, ms) };
+    waiters.push(w);
+  });
+}
+
+function onMessage(input, e) {
+  const d = e.data;
+  if (d[0] === 0xF0) {
+    const r = parseReply(d);
+    if (!r) return;
+    for (const w of waiters.slice()) {
+      if ((w.input === null || w.input === input) && w.test(r, input)) {
+        clearTimeout(w.timer);
+        waiters = waiters.filter(x => x !== w);
+        w.resolve({ ...r, input });
+      }
+    }
+    if (dev && input === dev.input && (r.cmd === CMD.CONFIG || r.cmd === CMD.ERROR)) handleConfigReply(r);
+    return;
+  }
+  if (dev && input === dev.input) showActivity(d);
+}
+
+function attachInputs() {
+  for (const input of access.inputs.values()) {
+    input.onmidimessage = e => onMessage(input, e);
+  }
+}
+
+// Sends HELLO with a different nonce on each candidate output; whichever input answers
+// with that nonce is the matching half of the same device.
+async function scan(all = false) {
+  attachInputs();
+  const outputs = [...access.outputs.values()].filter(o => o.state === "connected" && (all || NAME_RE.test(o.name || "")));
+  const found = [];
+  const seenIds = new Set();
+  const collector = waitFor(null, (r, input) => {
+    if (r.cmd !== CMD.HELLO || r.payload.length < 5) return false;
+    const out = outputs[r.payload[0] - 1];
+    const info = decodeHello(r.payload);
+    if (out && !seenIds.has(info.id)) { seenIds.add(info.id); found.push({ input, output: out, info }); }
+    return false; // keep listening until the timeout
+  }, 600).catch(() => {});
+  const failures = [];
+  outputs.forEach((o, i) => {
+    try { sysex(o, CMD.HELLO, [i + 1]); } catch (err) { failures.push(o.name); }
+  });
+  await collector;
+  return { found, failures, probed: outputs.length };
+}
+
+function decodeHello(p) {
+  const [, proto, maj, min, patch] = p;
+  let id = "";
+  for (let i = 5; i + 1 < p.length; i += 2) id += ((p[i] << 4) | p[i + 1]).toString(16).padStart(2, "0");
+  return { proto, version: `${maj}.${min}.${patch}`, id: id.toUpperCase() };
+}
+
+// ---------------------------------------------------------------- connect flow
+async function connect(all = false) {
+  if (!navigator.requestMIDIAccess) {
+    return showConnectMsg("This browser can’t talk to MIDI devices. Open this page in Chrome or Edge.", true);
+  }
+  if (!window.isSecureContext) {
+    return showConnectMsg("This page has to be served over HTTPS (or from localhost) for MIDI to work.", true);
+  }
+  $("connectBtn").disabled = true;
+  $("connectBtn").textContent = "Looking for your button…";
+  try {
+    if (!access) {
+      access = await navigator.requestMIDIAccess({ sysex: true });
+      access.onstatechange = onStateChange;
+    }
+    const { found, failures, probed } = await scan(all);
+    devices = found;
+    if (!found.length) {
+      const names = [...access.outputs.values()].map(o => o.name).filter(Boolean);
+      let msg = "No MIDI Button found. Check that it’s plugged in (some USB cables only charge) and try again.";
+      if (failures.length) msg = `Couldn’t open ${failures.join(", ")}. Another app is probably using it; close it and try again.`;
+      showConnectMsg(msg + (names.length && !all
+        ? ` <br><span class="muted">MIDI ports seen: ${names.map(esc).join(", ")}.</span> <button class="link" id="scanAll">Search all ports</button>`
+        : ""), !!failures.length);
+      const sa = $("scanAll");
+      if (sa) sa.onclick = () => connect(true);
+      return;
+    }
+    await selectDevice(found[0]);
+  } catch (err) {
+    const denied = err && (err.name === "SecurityError" || err.name === "NotAllowedError");
+    showConnectMsg(denied
+      ? "MIDI access was blocked. Click the icon at the left of the address bar, allow MIDI devices, then try again."
+      : `Something went wrong: ${esc(err.message || String(err))}`, true);
+  } finally {
+    $("connectBtn").disabled = false;
+    $("connectBtn").textContent = "Connect";
+  }
+}
+
+async function selectDevice(d) {
+  dev = d;
+  try { await d.output.open(); await d.input.open(); } catch { /* opened implicitly by send */ }
+  sysex(d.output, CMD.CONFIG);
+  const r = await waitFor(d.input, r => r.cmd === CMD.CONFIG, 1500);
+  applyDeviceConfig(r.payload);
+  renderDeviceLine();
+  $("log").innerHTML = "";
+  $("last").innerHTML = "&nbsp;";
+  setView(true);
+}
+
+function onStateChange(e) {
+  const p = e.port;
+  if (dev && p.state === "disconnected" && (p === dev.input || p === dev.output)) {
+    dev = null;
+    setView(false);
+    showConnectMsg("The button was unplugged. Plug it back in and it will reconnect.");
+  }
+  if (p.state === "connected" && NAME_RE.test(p.name || "")) {
+    clearTimeout(rescanTimer);
+    rescanTimer = setTimeout(async () => {
+      if (dev && devices.length && !needsRescan()) return;
+      const { found } = await scan();
+      devices = found;
+      if (!dev && found.length) await selectDevice(found[0]).catch(() => {});
+      else renderDeviceLine();
+    }, 700);
+  }
+}
+const needsRescan = () => [...access.outputs.values()].filter(o => o.state === "connected" && NAME_RE.test(o.name || "")).length !== devices.length;
+
+// ---------------------------------------------------------------- config <-> form
+function applyDeviceConfig(p) {
+  const [type, channel, number, onValue, offValue, mode, d] = p;
+  cfg = { type, channel, number, onValue, offValue, mode };
+  dirty = !!d;
+  renderForm();
+  renderSaveState();
+}
+
+function handleConfigReply(r) {
+  if (r.cmd === CMD.ERROR) {
+    setSaveState(`The button rejected that: ${ERRORS[r.payload[1]] || "error " + r.payload[1]}`, true);
+    return;
+  }
+  const [type, channel, number, onValue, offValue, mode, d] = r.payload;
+  const incoming = { type, channel, number, onValue, offValue, mode };
+  dirty = !!d;
+  // Only redraw the form when the button disagrees with it (defaults, another tab, etc.).
+  if (JSON.stringify(incoming) !== JSON.stringify(cfg) && !setTimer) { cfg = incoming; renderForm(); }
+  renderSaveState();
+}
+
+function pushConfig() {
+  clearTimeout(setTimer);
+  setTimer = setTimeout(() => {
+    setTimer = 0;
+    if (!dev) return;
+    try {
+      sysex(dev.output, CMD.SET, [cfg.type, cfg.channel, cfg.number, cfg.onValue, cfg.offValue, cfg.mode]);
+    } catch (err) { setSaveState("Couldn’t reach the button.", true); }
+  }, 120);
+  dirty = true;
+  renderSaveState();
+}
+
+function renderForm() {
+  document.body.dataset.type = cfg.type;
+  for (const b of $("typeSeg").children) b.setAttribute("aria-pressed", String(+b.dataset.v === cfg.type));
+  for (const b of $("modeSeg").children) b.setAttribute("aria-pressed", String(+b.dataset.v === cfg.mode));
+  for (const f of document.querySelectorAll("[data-for]")) f.hidden = !f.dataset.for.split(" ").includes(String(cfg.type));
+  $("channel").value = cfg.channel;
+  if (cfg.type === 0) {
+    $("note").value = cfg.number;
+    $("velocity").value = Math.max(1, cfg.onValue);
+  } else if (cfg.type === 1) {
+    $("cc").value = cfg.number;
+    $("ccOn").value = cfg.onValue;
+    $("ccOff").value = cfg.offValue;
+  } else {
+    $("program").value = cfg.number + 1;
+  }
+  renderLabels();
+}
+
+function renderLabels() {
+  $("noteName").textContent = cfg.type === 0 ? noteName(cfg.number) : "";
+  $("velocityOut").value = $("velocity").value;
+  $("ccName").textContent = CC_NAMES[cfg.number] || "";
+  $("ccOnOut").value = $("ccOn").value;
+  $("ccOffOut").value = $("ccOff").value;
+  const hints = {
+    0: ["Note on while held, note off when you let go.", "First press starts the note, the next press stops it."],
+    1: ["Sends the pressed value, then the released value when you let go.", "Alternates between the pressed and released values on each press."],
+  };
+  $("modeHint").textContent = cfg.type === 2 ? "Sends the program change each time you press." : hints[cfg.type][cfg.mode];
+}
+
+function clampInt(v, lo, hi) {
+  v = Math.round(Number(v));
+  return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : lo;
+}
+
+function bindForm() {
+  for (let ch = 0; ch < 16; ch++) $("channel").add(new Option(`Channel ${ch + 1}`, ch));
+  $("typeSeg").onclick = e => {
+    const v = e.target.dataset && e.target.dataset.v;
+    if (v === undefined || +v === cfg.type) return;
+    const t = +v;
+    // Sensible starting values when switching type.
+    if (t === 0) Object.assign(cfg, { number: 60, onValue: 100, offValue: 0 });
+    if (t === 1) Object.assign(cfg, { number: 64, onValue: 127, offValue: 0 });
+    if (t === 2) Object.assign(cfg, { number: 0, onValue: 0, offValue: 0, mode: 0 });
+    cfg.type = t;
+    renderForm(); pushConfig();
+  };
+  $("modeSeg").onclick = e => {
+    const v = e.target.dataset && e.target.dataset.v;
+    if (v === undefined) return;
+    cfg.mode = +v; renderForm(); pushConfig();
+  };
+  $("channel").onchange = () => { cfg.channel = +$("channel").value; pushConfig(); };
+  const num = (id, key, lo, hi, offset = 0) => {
+    const el = $(id);
+    el.oninput = () => {
+      if (el.value === "") return;
+      cfg[key] = clampInt(el.value, lo, hi) - offset; renderLabels(); pushConfig();
+    };
+    el.onchange = () => { el.value = cfg[key] + offset; };
+  };
+  num("note", "number", 0, 127);
+  num("cc", "number", 0, 127);
+  num("program", "number", 1, 128, 1);
+  const range = (id, key) => { $(id).oninput = () => { cfg[key] = +$(id).value; renderLabels(); pushConfig(); }; };
+  range("velocity", "onValue");
+  range("ccOn", "onValue");
+  range("ccOff", "offValue");
+
+  $("saveBtn").onclick = save;
+  $("resetBtn").onclick = () => { if (dev) { clearTimeout(setTimer); setTimer = 0; sysex(dev.output, CMD.DEFAULTS); waitFor(dev.input, r => r.cmd === CMD.CONFIG).then(r => applyDeviceConfig(r.payload)).catch(() => {}); } };
+  $("deviceSelect").onchange = () => selectDevice(devices[+$("deviceSelect").value]).catch(() => {});
+  $("connectBtn").onclick = () => connect();
+  document.addEventListener("keydown", e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "s" && dev) { e.preventDefault(); save(); }
+  });
+  window.addEventListener("beforeunload", e => { if (dev && dirty) { e.preventDefault(); e.returnValue = ""; } });
+}
+
+async function save() {
+  if (!dev || !dirty) return;
+  $("saveBtn").disabled = true;
+  setSaveState("Saving…");
+  try {
+    if (setTimer) {  // flush the pending change first
+      clearTimeout(setTimer); setTimer = 0;
+      sysex(dev.output, CMD.SET, [cfg.type, cfg.channel, cfg.number, cfg.onValue, cfg.offValue, cfg.mode]);
+    }
+    sysex(dev.output, CMD.SAVE);
+    const r = await waitFor(dev.input, r => (r.cmd === CMD.CONFIG && r.payload[6] === 0) || r.cmd === CMD.ERROR, 2000);
+    if (r.cmd === CMD.ERROR) throw new Error(ERRORS[r.payload[1]]);
+    dirty = false;
+    renderSaveState("Saved. The button keeps this setting when unplugged.");
+  } catch (err) {
+    setSaveState("Save didn’t go through. Try again.", true);
+    $("saveBtn").disabled = false;
+  }
+}
+
+function renderSaveState(text) {
+  $("saveBtn").disabled = !dirty;
+  if (dirty) setSaveState("Unsaved: the button uses this until it’s unplugged", false, true);
+  else setSaveState(text || "Saved on the button");
+}
+function setSaveState(text, error = false, isDirty = false) {
+  const s = $("saveState");
+  s.textContent = text;
+  s.className = "state" + (isDirty ? " dirty" : "");
+  s.style.color = error ? "var(--danger)" : "";
+}
+
+// ---------------------------------------------------------------- live preview
+let flashTimer = 0;
+function showActivity(d) {
+  const st = d[0] & 0xF0, ch = (d[0] & 0x0F) + 1;
+  let text = null, lit = null;
+  if (st === 0x90 && d[2] > 0) { text = `Note on  ${noteName(d[1])} (${d[1]})  vel ${d[2]}`; lit = true; }
+  else if (st === 0x80 || (st === 0x90 && d[2] === 0)) { text = `Note off ${noteName(d[1])} (${d[1]})`; lit = false; }
+  else if (st === 0xB0) { text = `CC ${d[1]} = ${d[2]}`; lit = cfg && d[2] === cfg.onValue && cfg.onValue !== cfg.offValue; }
+  else if (st === 0xC0) { text = `Program ${d[1] + 1}`; lit = "flash"; }
+  if (!text) return;
+  text += `  ch ${ch}`;
+  $("last").textContent = text;
+  const li = document.createElement("li");
+  li.textContent = text;
+  const log = $("log");
+  log.prepend(li);
+  while (log.children.length > 5) log.lastChild.remove();
+  const pad = $("pad");
+  clearTimeout(flashTimer);
+  if (lit === "flash") { pad.classList.add("lit"); flashTimer = setTimeout(() => pad.classList.remove("lit"), 160); }
+  else pad.classList.toggle("lit", lit);
+}
+
+// ---------------------------------------------------------------- views
+function setView(connected) {
+  $("connectView").hidden = connected;
+  $("deviceView").hidden = !connected;
+  $("bar").hidden = !connected;
+  $("connectMsg").hidden = true;
+  const pill = $("pill");
+  pill.className = "pill" + (connected ? " on" : "");
+  $("pillText").textContent = connected ? "Connected" : "Not connected";
+  if (!connected) $("pad").classList.remove("lit");
+}
+
+function renderDeviceLine() {
+  if (!dev) return;
+  $("devPort").textContent = dev.output.name;
+  $("devFw").textContent = `Firmware ${dev.info.version}`;
+  $("devId").textContent = `ID ${dev.info.id.slice(-8)}`;
+  $("devId").title = dev.info.id;
+  const sel = $("deviceSelect");
+  sel.innerHTML = "";
+  devices.forEach((d, i) => sel.add(new Option(`Button ${i + 1} (${d.info.id.slice(-4)})`, i, false, d.info.id === dev.info.id)));
+  $("deviceSelectWrap").hidden = devices.length < 2;
+}
+
+function showConnectMsg(html, error = false) {
+  const m = $("connectMsg");
+  m.innerHTML = html;
+  m.className = "notice" + (error ? " error" : "");
+  m.hidden = false;
+}
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+bindForm();
+if (!navigator.requestMIDIAccess) {
+  showConnectMsg("This browser can’t talk to MIDI devices. Open this page in Chrome or Edge on a computer or Android phone.", true);
+  $("connectBtn").disabled = true;
+}
+</script>
+</body>
+</html>

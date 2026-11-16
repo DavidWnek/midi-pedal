@@ -1,0 +1,114 @@
+# MIDI Button
+
+One button on an RP2350 board. Press it and it sends a MIDI message over USB: a note,
+a control change or a program change. You set what it sends from a small web page that
+talks to the button over the same USB MIDI port, so there is no driver, app or serial port
+to install.
+
+```
+firmware/MidiButton/MidiButton.ino   the firmware (Arduino, earlephilhower RP2040/RP2350 core)
+firmware/build.ps1                   builds build/midi-button-<board>.uf2
+web/index.html                       the configurator: one static file, no build step
+```
+
+## Wiring
+
+A momentary switch between **GP9** and **GP13**, either way round. GP9 is driven low and
+acts as the return, so no GND wire is needed. On the Waveshare RP2350-Zero both are on the
+bottom edge (GP13 is pad 10, GP9 is pad 14). On a Pico 2 they are pins 12 (GP9) and 17 (GP13).
+
+To wire the switch to GND instead, set `BUTTON_RETURN_PIN` to `-1` and `BUTTON_PIN` to the
+input pin at the top of the sketch.
+
+The board's **BOOT** button also works as the button, so you can try it before wiring
+anything. Set `USE_BOOTSEL_AS_BUTTON` to `0` to turn that off.
+
+The LED shows the state. On the RP2350-Zero's RGB LED the colour shows the message type
+(blue note, green CC, amber program change): dim when idle, bright while the button is
+held or latched, white for a moment after a save. On a plain LED it is on while active.
+
+## Build and flash
+
+Needs the Arduino **Raspberry Pi Pico/RP2040/RP2350** core by Earle Philhower (6.x) and,
+for boards with an RGB LED, the **Adafruit NeoPixel** library. The script uses the
+arduino-cli that comes with Arduino IDE 2.
+
+```powershell
+.\firmware\build.ps1                      # Waveshare RP2350-Zero
+.\firmware\build.ps1 -Board rpipico2      # Raspberry Pi Pico 2
+```
+
+To flash, hold BOOT while plugging the board in, then copy `build\midi-button-<board>.uf2`
+onto the `RP2350` drive that appears. After that, `.\firmware\build.ps1 -Upload -Port COMx`
+works too (the board also has a serial port, which arduino-cli uses to reset it).
+
+It appears as a USB MIDI device called **MIDI Button**. It is class compliant, so it works
+with Windows, macOS, Linux, iPad (with a USB adapter) and Android without drivers.
+
+## Configure
+
+Open the web page in Chrome or Edge (desktop or Android), click **Connect**, allow MIDI
+access, and change the settings. Changes take effect on the button right away so you can try
+them. **Save to button** writes them to flash so they survive unplugging.
+
+| Setting | Note | Control change | Program change |
+|---|---|---|---|
+| Number | note 0-127 | controller 0-127 | program 1-128 |
+| On press | note on, velocity | value when pressed | program change |
+| On release | note off | value when released | nothing |
+| Toggle mode | 1st press on, 2nd press off | alternates the two values | n/a |
+
+Safari (macOS and iOS) has no Web MIDI, so it can't configure the button. The button
+still works there as a MIDI device. Firefox can, after it asks to install its site
+permission add-on.
+
+### Hosting
+
+`web/index.html` is a single file with no external requests. Put it on any static host that
+serves HTTPS (GitHub Pages, Netlify, Cloudflare Pages, an S3 bucket). Web MIDI only works
+in a secure context, so plain `http://` does not work except on `localhost`. To try it
+locally:
+
+```bash
+python -m http.server 8000 --directory web
+```
+
+and open http://localhost:8000.
+
+## Protocol
+
+Configuration is SysEx on the button's own MIDI port. Messages use the non-commercial
+manufacturer ID `7D` followed by `4D 42` ("MB"):
+
+```
+F0 7D 4D 42 <cmd> <payload...> F7
+```
+
+| Cmd | Host sends | Button replies |
+|---|---|---|
+| `01` HELLO | `<nonce>` | `01 <nonce> <protocol> <major> <minor> <patch> <16 nibbles of chip ID>` |
+| `02` GET | nothing | `02 <config> <dirty>` |
+| `03` SET | `<config>` | `02 <config> <dirty>`. Applied live, not saved. |
+| `04` SAVE | nothing | `02 <config> 00` once written to flash |
+| `05` DEFAULTS | nothing | `02 <config> <dirty>`. Defaults applied live, not saved. |
+| `7F` ERROR | | `7F <cmd> <code>`: 1 bad length, 2 value out of range, 3 flash write failed, 4 unknown command |
+
+`<config>` is six bytes: `type` (0 note, 1 CC, 2 program change), `channel` (0-15),
+`number`, `onValue`, `offValue`, `mode` (0 momentary, 1 toggle). `dirty` is 1 when the live
+config differs from what is saved. Defaults are note 60 (C4), velocity 100, channel 1,
+momentary.
+
+The page finds the button by sending HELLO with a different nonce to every output port
+named "MIDI Button". The input that answers with a given nonce belongs to the same device,
+which pairs the ports correctly when several buttons are plugged in.
+
+When the config changes while a note is held or latched, the button sends the note off
+(or the CC's released value) first, so nothing is left hanging.
+
+## Not done yet
+
+- USB VID/PID is the core's default Raspberry Pi ID. A product needs its own.
+- Tested on a Waveshare RP2350-Zero with a wired switch on GP9/GP13: USB MIDI, every
+  SysEx command, save across reboot, clean press/release and long holds, and the web page in
+  Chrome setting note, CC and program change, checked in another MIDI app. Not yet tried on
+  a Pico 2, macOS, Linux or Android.
