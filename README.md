@@ -17,6 +17,17 @@ site/configure/index.html            the configurator: one static file, no build
 
 A just-for-fun open-source project, MIT licensed. Issues and pull requests welcome.
 
+## Parts
+
+| Qty | Part | Notes |
+|---|---|---|
+| 1 | [Waveshare RP2350-Zero](https://www.amazon.com/dp/B0H9RB7T4F) | A Raspberry Pi Pico 2 also works |
+| 1 | [SPST momentary footswitch, normally open, 2 pin](https://www.amazon.com/dp/B08TBTWDYV) | Any momentary switch works |
+| ~3" | 24 AWG wire | Cut in two, one per lug |
+| 1 | USB-C data cable | Charge-only cables won't show up as MIDI |
+
+A 3D-printable case is coming; the STL files will go in this repo.
+
 ## Wiring
 
 A momentary switch between **GP9** and **GP13**, either way round. GP9 is driven low and

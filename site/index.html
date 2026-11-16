@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MIDI Button</title>
-<meta name="description" content="A tiny open-source USB MIDI button on a $5 RP2350 board. Wire a switch, drop one file on the board, set it up in your browser.">
+<meta name="description" content="A tiny open-source USB MIDI footswitch on an RP2350 board. Wire a switch, drop one file on the board, set it up in your browser.">
 <meta property="og:title" content="MIDI Button">
-<meta property="og:description" content="One button. One MIDI message. Yours to choose. Open source, about $5 in parts, set up in the browser.">
+<meta property="og:description" content="One button. One MIDI message. Yours to choose. Open source, two parts and two wires, set up in the browser.">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0f1115">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%233b82f6'/%3E%3Ccircle cx='16' cy='16' r='8' fill='%23fff' fill-opacity='.85'/%3E%3C/svg%3E">
@@ -168,7 +168,7 @@ footer .sp { margin-left: auto; }
 <header class="hero">
   <div class="wrap">
     <div>
-      <div class="eyebrow"><span class="dots"><i></i><i></i><i></i></span> Open source · about $5 in parts</div>
+      <div class="eyebrow"><span class="dots"><i></i><i></i><i></i></span> Open source · two parts, two wires</div>
       <h1>One button.<br>One MIDI message.<br><span>Yours to choose.</span></h1>
       <p class="lead">A tiny USB MIDI button built on an RP2350 board. Wire up any switch, drop one file onto the board, and set what it sends right here in your browser. No drivers, no app.</p>
       <div class="cta">
@@ -233,11 +233,12 @@ footer .sp { margin-left: auto; }
         <div>
           <h3>Get the parts</h3>
           <ul class="parts">
-            <li><span><b>Waveshare RP2350-Zero</b> <span class="muted">or a Raspberry Pi Pico 2</span></span></li>
-            <li><span><b>Any momentary switch</b> <span class="muted">footswitch, arcade button, tactile switch</span></span></li>
-            <li><span><b>Two wires</b> <span class="muted">and a soldering iron</span></span></li>
+            <li><span><b>1 × <a href="https://www.amazon.com/dp/B0H9RB7T4F" rel="nofollow noopener">RP2350-Zero</a></b> <span class="muted">Waveshare’s tiny RP2350 board (a Pico 2 works too)</span></span></li>
+            <li><span><b>1 × <a href="https://www.amazon.com/dp/B08TBTWDYV" rel="nofollow noopener">momentary footswitch</a></b> <span class="muted">SPST, normally open, 2 pin (any momentary switch works)</span></span></li>
+            <li><span><b>~3″ of 24 AWG wire</b> <span class="muted">cut in two, plus a soldering iron</span></span></li>
             <li><span><b>A USB-C data cable</b> <span class="muted">not a charge-only one</span></span></li>
           </ul>
+          <p class="small muted" style="margin-top: 14px">A 3D-printable case is on the way; the STL files will be posted in the repo.</p>
         </div>
       </div>
 
@@ -247,7 +248,7 @@ footer .sp { margin-left: auto; }
           <h3>Wire the switch</h3>
           <div class="wiring">
             <div>
-              <p>Solder one leg of the switch to <b>GP9</b> and the other to <b>GP13</b>. Either way round works: the firmware uses GP9 as the return, so you don’t need a ground wire.</p>
+              <p>Solder a short wire from each of the footswitch’s two lugs: one to <b>GP9</b>, the other to <b>GP13</b>. Either way round works: the firmware uses GP9 as the return, so you don’t need a ground wire.</p>
               <p class="small muted">On the RP2350-Zero both are pads on the edge opposite the USB port. On a Pico 2 they’re pins 12 (GP9) and 17 (GP13). No switch yet? The board’s BOOT button works too.</p>
             </div>
             <svg viewBox="0 0 400 300" role="img" aria-labelledby="wireTitle">
