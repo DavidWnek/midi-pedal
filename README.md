@@ -5,11 +5,17 @@ a control change or a program change. You set what it sends from a small web pag
 talks to the button over the same USB MIDI port, so there is no driver, app or serial port
 to install.
 
+**Site, firmware downloads and configurator: https://davidwnek.github.io/midi-pedal/**
+
 ```
 firmware/MidiButton/MidiButton.ino   the firmware (Arduino, earlephilhower RP2040/RP2350 core)
-firmware/build.ps1                   builds build/midi-button-<board>.uf2
-web/index.html                       the configurator: one static file, no build step
+firmware/build.ps1                   builds build/midi-button-<board>.uf2 on Windows
+site/index.html                      the landing page
+site/configure/index.html            the configurator: one static file, no build step
+.github/workflows/pages.yml          builds the firmware and deploys site/ to GitHub Pages
 ```
+
+A just-for-fun open-source project, MIT licensed. Issues and pull requests welcome.
 
 ## Wiring
 
@@ -38,6 +44,8 @@ arduino-cli that comes with Arduino IDE 2.
 .\firmware\build.ps1 -Board rpipico2      # Raspberry Pi Pico 2
 ```
 
+Or skip building: the site has ready-made `.uf2` files, built by CI from `main`.
+
 To flash, hold BOOT while plugging the board in, then copy `build\midi-button-<board>.uf2`
 onto the `RP2350` drive that appears. After that, `.\firmware\build.ps1 -Upload -Port COMx`
 works too (the board also has a serial port, which arduino-cli uses to reset it).
@@ -47,7 +55,8 @@ with Windows, macOS, Linux, iPad (with a USB adapter) and Android without driver
 
 ## Configure
 
-Open the web page in Chrome or Edge (desktop or Android), click **Connect**, allow MIDI
+Open the [configurator](https://davidwnek.github.io/midi-pedal/configure/) in Chrome or
+Edge (desktop or Android), click **Connect**, allow MIDI
 access, and change the settings. Changes take effect on the button right away so you can try
 them. **Save to button** writes them to flash so they survive unplugging.
 
@@ -64,16 +73,20 @@ permission add-on.
 
 ### Hosting
 
-`web/index.html` is a single file with no external requests. Put it on any static host that
-serves HTTPS (GitHub Pages, Netlify, Cloudflare Pages, an S3 bucket). Web MIDI only works
-in a secure context, so plain `http://` does not work except on `localhost`. To try it
-locally:
+Every push to `main` runs `.github/workflows/pages.yml`: it compiles the firmware for each
+board, copies the `.uf2` files and a `version.json` into `site/firmware/`, and deploys `site/`
+to GitHub Pages. In a fork, turn it on once under Settings > Pages > Source: **GitHub Actions**.
+
+The pages are plain HTML with no build step and no external requests, so `site/` works on
+any static host that serves HTTPS. Web MIDI only works in a secure context, so plain
+`http://` does not work except on `localhost`. To try it locally:
 
 ```bash
-python -m http.server 8000 --directory web
+python -m http.server 8000 --directory site
 ```
 
-and open http://localhost:8000.
+and open http://localhost:8000. Copy `build\*.uf2` into `site\firmware\` first if you
+want the download links to work locally.
 
 ## Protocol
 

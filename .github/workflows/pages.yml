@@ -1,0 +1,101 @@
+# Builds the firmware for each supported board and publishes the site (landing page,
+# configurator and the .uf2 downloads) to GitHub Pages.
+#
+# One-time setup: repo Settings > Pages > Build and deployment > Source: GitHub Actions.
+
+name: Build and deploy site
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  RP2040_CORE: rp2040:rp2040@6.1.0
+  CORE_INDEX: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        board: [waveshare_rp2350_zero, rpipico2]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Cache Arduino core
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.arduino15
+            ~/Arduino/libraries
+          key: arduino-${{ env.RP2040_CORE }}-neopixel
+
+      - name: Install core and libraries
+        run: |
+          arduino-cli core update-index --additional-urls "$CORE_INDEX"
+          arduino-cli core install "$RP2040_CORE" --additional-urls "$CORE_INDEX"
+          arduino-cli lib install "Adafruit NeoPixel"
+
+      - name: Compile
+        run: |
+          arduino-cli compile \
+            --fqbn "rp2040:rp2040:${{ matrix.board }}:usbstack=picosdk" \
+            --build-path build \
+            firmware/MidiButton
+          mkdir -p out
+          cp build/MidiButton.ino.uf2 "out/midi-button-${{ matrix.board }}.uf2"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.board }}
+          path: out/*.uf2
+
+  site:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: firmware-*
+          merge-multiple: true
+          path: site/firmware
+
+      - name: Write firmware version
+        run: |
+          ino=firmware/MidiButton/MidiButton.ino
+          v() { grep -m1 "#define $1" "$ino" | awk '{print $3}'; }
+          printf '{"version":"%s.%s.%s","commit":"%s","date":"%s"}\n' \
+            "$(v FW_MAJOR)" "$(v FW_MINOR)" "$(v FW_PATCH)" "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > site/firmware/version.json
+          cat site/firmware/version.json
+          ls -l site/firmware
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: site
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

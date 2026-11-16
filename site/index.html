@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MIDI Button</title>
+<meta name="description" content="A tiny open-source USB MIDI button on a $5 RP2350 board. Wire a switch, drop one file on the board, set it up in your browser.">
+<meta property="og:title" content="MIDI Button">
+<meta property="og:description" content="One button. One MIDI message. Yours to choose. Open source, about $5 in parts, set up in the browser.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0f1115">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%233b82f6'/%3E%3Ccircle cx='16' cy='16' r='8' fill='%23fff' fill-opacity='.85'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f6f7f9; --bg2: #eceff3; --card: #ffffff; --text: #14161b; --muted: #5d6573; --line: #e1e5eb;
+  --accent: #2f6fed; --accent-text: #fff; --pad: #dfe3ea; --pad-edge: #c6ccd6; --code: #eef1f5;
+  --blue: #3b82f6; --green: #10b981; --amber: #f59e0b;
+  --shadow: 0 1px 2px rgba(16,24,40,.05), 0 8px 28px rgba(16,24,40,.06);
+  --type: var(--blue);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1115; --bg2: #14171c; --card: #181b21; --text: #eaedf2; --muted: #98a0ae; --line: #282d36;
+    --accent: #4c86ff; --pad: #252932; --pad-edge: #333946; --code: #20242c; --shadow: none; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1115; --bg2: #14171c; --card: #181b21; --text: #eaedf2; --muted: #98a0ae; --line: #282d36;
+  --accent: #4c86ff; --pad: #252932; --pad-edge: #333946; --code: #20242c; --shadow: none; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: -.02em; line-height: 1.15; margin: 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code { font: .9em ui-monospace, SFMono-Regular, Consolas, monospace; background: var(--code); padding: .1em .35em; border-radius: 5px; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+.muted { color: var(--muted); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+
+/* nav */
+nav { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+nav .wrap { display: flex; align-items: center; gap: 22px; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--text); font-size: 17px; }
+.brand:hover { text-decoration: none; }
+.logo { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); position: relative; flex: none; }
+.logo::after { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: #fff; opacity: .85; }
+nav .links { margin-left: auto; display: flex; gap: 22px; align-items: center; font-size: 15px; }
+nav .links a:not(.btn) { color: var(--muted); }
+nav .links a:not(.btn):hover { color: var(--text); text-decoration: none; }
+@media (max-width: 640px) { nav .links .hide-sm { display: none; } }
+
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 11px; font-weight: 600; font-size: 15px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+.btn:hover { text-decoration: none; border-color: var(--muted); }
+.btn.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.small { padding: 7px 14px; font-size: 14px; }
+
+/* hero */
+.hero { padding: 72px 0 64px; }
+.hero .wrap { display: grid; grid-template-columns: 1.1fr .9fr; gap: 48px; align-items: center; }
+@media (max-width: 820px) { .hero .wrap { grid-template-columns: 1fr; gap: 40px; } .hero { padding-top: 44px; } }
+.eyebrow { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 600; color: var(--muted); background: var(--card); border: 1px solid var(--line); padding: 5px 12px; border-radius: 999px; margin-bottom: 22px; }
+.dots { display: inline-flex; gap: 4px; }
+.dots i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+.dots i:nth-child(1) { background: var(--blue); } .dots i:nth-child(2) { background: var(--green); } .dots i:nth-child(3) { background: var(--amber); }
+.hero h1 { font-size: clamp(38px, 6vw, 62px); font-weight: 800; }
+.hero h1 span { color: var(--accent); }
+.hero p.lead { font-size: 19px; color: var(--muted); margin: 20px 0 30px; max-width: 34em; }
+.cta { display: flex; gap: 12px; flex-wrap: wrap; }
+.facts { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 30px; font-size: 14px; color: var(--muted); }
+.facts b { color: var(--text); }
+
+/* demo pad */
+.demo { background: var(--card); border: 1px solid var(--line); border-radius: 24px; padding: 28px 24px 22px; box-shadow: var(--shadow); text-align: center; }
+.demo .seg { display: inline-flex; background: var(--bg2); border-radius: 10px; padding: 3px; gap: 3px; margin-bottom: 22px; }
+.demo .seg button { font: inherit; font-size: 14px; border: none; background: none; color: var(--muted); padding: 6px 14px; border-radius: 8px; cursor: pointer; }
+.demo .seg button[aria-pressed="true"] { background: var(--card); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.14); }
+.pad {
+  width: 190px; height: 190px; border-radius: 50%; margin: 0 auto; position: relative; cursor: pointer;
+  border: 7px solid color-mix(in srgb, var(--type) 35%, var(--pad-edge));
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--type) 7%, transparent);
+  background: radial-gradient(circle at 50% 38%, var(--card), var(--pad)); transition: box-shadow .08s, border-color .08s, transform .08s;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation; user-select: none;
+}
+.pad::after { content: ""; position: absolute; inset: 44px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--type) 30%, var(--pad-edge)); transition: border-color .08s, background .08s; }
+.pad:hover { border-color: color-mix(in srgb, var(--type) 55%, var(--pad-edge)); }
+.pad.lit { border-color: var(--type); transform: scale(.985); box-shadow: 0 0 0 8px color-mix(in srgb, var(--type) 20%, transparent), 0 0 48px color-mix(in srgb, var(--type) 55%, transparent); }
+.pad.lit::after { border-color: var(--type); background: color-mix(in srgb, var(--type) 28%, transparent); }
+.msg { margin-top: 20px; font: 600 15px ui-monospace, SFMono-Regular, Consolas, monospace; min-height: 1.6em; font-variant-numeric: tabular-nums; }
+.msg .t { color: var(--type); }
+.demo .hint { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+/* sections */
+section { padding: 72px 0; }
+section.alt { background: var(--bg2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.head { max-width: 640px; margin-bottom: 40px; }
+.head h2 { font-size: clamp(28px, 4vw, 38px); font-weight: 800; }
+.head p { color: var(--muted); font-size: 18px; margin: 12px 0 0; }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+@media (max-width: 820px) { .cards { grid-template-columns: 1fr; } }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 24px; box-shadow: var(--shadow); }
+.card h3 { font-size: 19px; margin: 14px 0 8px; }
+.card p { margin: 0; color: var(--muted); }
+.icon { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: color-mix(in srgb, var(--c, var(--blue)) 15%, transparent); color: var(--c, var(--blue)); }
+.icon svg { width: 22px; height: 22px; }
+
+/* build */
+.steps { display: grid; gap: 18px; }
+.step { display: grid; grid-template-columns: 56px 1fr; gap: 18px; background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 24px; box-shadow: var(--shadow); }
+.step .n { width: 40px; height: 40px; border-radius: 50%; background: var(--accent); color: var(--accent-text); display: grid; place-items: center; font-weight: 800; font-size: 18px; }
+.step h3 { font-size: 21px; margin-bottom: 8px; }
+.step p { margin: 0 0 12px; }
+.step p:last-child { margin-bottom: 0; }
+@media (max-width: 560px) { .step { grid-template-columns: 1fr; gap: 10px; } }
+.parts { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 24px; }
+@media (max-width: 560px) { .parts { grid-template-columns: 1fr; } }
+.parts li { display: flex; gap: 10px; align-items: baseline; }
+.parts li::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; transform: translateY(-2px); }
+.wiring { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: center; }
+@media (max-width: 760px) { .wiring { grid-template-columns: 1fr; } }
+.wiring svg { width: 100%; height: auto; max-width: 420px; display: block; margin: 0 auto; }
+.dl { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0 12px; }
+.small { font-size: 14px; }
+
+/* ideas */
+.ideas { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.idea { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; }
+.idea b { display: block; margin-bottom: 4px; }
+.idea span { color: var(--muted); font-size: 15px; }
+.tag { display: inline-block; font: 600 12px ui-monospace, SFMono-Regular, Consolas, monospace; padding: 2px 8px; border-radius: 6px; margin-top: 10px; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); }
+
+/* faq */
+.faq { max-width: 760px; }
+details { border-bottom: 1px solid var(--line); padding: 16px 0; }
+summary { cursor: pointer; font-weight: 600; font-size: 17px; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "+"; color: var(--muted); font-weight: 400; font-size: 22px; line-height: 1; }
+details[open] summary::after { content: "–"; }
+details p { margin: 10px 0 0; color: var(--muted); }
+
+/* final cta */
+.final { text-align: center; }
+.final h2 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; }
+.final p { color: var(--muted); font-size: 18px; margin: 12px 0 28px; }
+.final .cta { justify-content: center; }
+footer { border-top: 1px solid var(--line); padding: 28px 0 40px; font-size: 14px; color: var(--muted); }
+footer .wrap { display: flex; gap: 16px 28px; flex-wrap: wrap; align-items: center; }
+footer .sp { margin-left: auto; }
+</style>
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <a class="brand" href="./"><span class="logo" aria-hidden="true"></span>MIDI Button</a>
+    <div class="links">
+      <a class="hide-sm" href="#how">How it works</a>
+      <a class="hide-sm" href="#build">Build one</a>
+      <a class="hide-sm" href="https://github.com/DavidWnek/midi-pedal">GitHub</a>
+      <a class="btn primary small" href="configure/">Configure</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div>
+      <div class="eyebrow"><span class="dots"><i></i><i></i><i></i></span> Open source · about $5 in parts</div>
+      <h1>One button.<br>One MIDI message.<br><span>Yours to choose.</span></h1>
+      <p class="lead">A tiny USB MIDI button built on an RP2350 board. Wire up any switch, drop one file onto the board, and set what it sends right here in your browser. No drivers, no app.</p>
+      <div class="cta">
+        <a class="btn primary" href="#build">Build one</a>
+        <a class="btn" href="configure/">Configure your button →</a>
+      </div>
+      <div class="facts">
+        <span><b>USB MIDI</b> class compliant</span>
+        <span><b>Note, CC</b> or program change</span>
+        <span><b>Momentary</b> or toggle</span>
+      </div>
+    </div>
+
+    <div class="demo" id="demo">
+      <div class="seg" role="group" aria-label="Message type">
+        <button type="button" data-t="0" aria-pressed="true">Note</button>
+        <button type="button" data-t="1" aria-pressed="false">CC</button>
+        <button type="button" data-t="2" aria-pressed="false">Program</button>
+      </div>
+      <div class="pad" id="pad" role="button" tabindex="0" aria-label="Press to try"></div>
+      <div class="msg" id="msg" aria-live="polite">&nbsp;</div>
+      <div class="hint">Press it (or hold space). This one only pretends.</div>
+    </div>
+  </div>
+</header>
+
+<section class="alt" id="how">
+  <div class="wrap">
+    <div class="head">
+      <h2>Small on purpose</h2>
+      <p>It does one thing: when you press it, your computer hears a MIDI message. Which message is up to you.</p>
+    </div>
+    <div class="cards">
+      <div class="card">
+        <div class="icon" style="--c: var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><rect x="8" y="15" width="8" height="6" rx="1"/></svg></div>
+        <h3>Plug and play</h3>
+        <p>It shows up as a standard USB MIDI device called “MIDI Button” on Windows, macOS, Linux, iPad and Android. Nothing to install.</p>
+      </div>
+      <div class="card">
+        <div class="icon" style="--c: var(--green)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18"/><path d="M8 21h8"/></svg></div>
+        <h3>Set up in the browser</h3>
+        <p>Open the configurator in Chrome or Edge, click Connect, pick your message. Changes apply instantly; save them and they stay on the button.</p>
+      </div>
+      <div class="card">
+        <div class="icon" style="--c: var(--amber)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+        <h3>Note, CC or program</h3>
+        <p>Any note with any velocity, any controller with press and release values, or a program change. Momentary or toggle, on any of the 16 channels.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="build">
+  <div class="wrap">
+    <div class="head">
+      <h2>Build one in an evening</h2>
+      <p>Two solder joints and a file copy. If you can strip a wire you can build this.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="n">1</div>
+        <div>
+          <h3>Get the parts</h3>
+          <ul class="parts">
+            <li><span><b>Waveshare RP2350-Zero</b> <span class="muted">or a Raspberry Pi Pico 2</span></span></li>
+            <li><span><b>Any momentary switch</b> <span class="muted">footswitch, arcade button, tactile switch</span></span></li>
+            <li><span><b>Two wires</b> <span class="muted">and a soldering iron</span></span></li>
+            <li><span><b>A USB-C data cable</b> <span class="muted">not a charge-only one</span></span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="n">2</div>
+        <div>
+          <h3>Wire the switch</h3>
+          <div class="wiring">
+            <div>
+              <p>Solder one leg of the switch to <b>GP9</b> and the other to <b>GP13</b>. Either way round works: the firmware uses GP9 as the return, so you don’t need a ground wire.</p>
+              <p class="small muted">On the RP2350-Zero both are pads on the edge opposite the USB port. On a Pico 2 they’re pins 12 (GP9) and 17 (GP13). No switch yet? The board’s BOOT button works too.</p>
+            </div>
+            <svg viewBox="0 0 400 300" role="img" aria-labelledby="wireTitle">
+              <title id="wireTitle">Switch wired between GP13 and GP9 on the bottom edge of an RP2350-Zero</title>
+              <rect x="120" y="20" width="160" height="190" rx="12" fill="var(--card)" stroke="var(--pad-edge)" stroke-width="3"/>
+              <rect x="170" y="8" width="60" height="26" rx="8" fill="var(--pad)" stroke="var(--pad-edge)" stroke-width="2"/>
+              <text x="200" y="26" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="ui-monospace,monospace">USB-C</text>
+              <rect x="170" y="80" width="60" height="60" rx="6" fill="var(--pad)"/>
+              <text x="200" y="115" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="ui-monospace,monospace">RP2350</text>
+              <g fill="var(--pad-edge)">
+                <circle cx="140" cy="198" r="7"/><circle cx="170" cy="198" r="7"/><circle cx="200" cy="198" r="7"/><circle cx="230" cy="198" r="7"/><circle cx="260" cy="198" r="7"/>
+              </g>
+              <circle cx="140" cy="198" r="7" fill="var(--blue)"/>
+              <circle cx="260" cy="198" r="7" fill="var(--blue)"/>
+              <text x="140" y="180" text-anchor="middle" font-size="12" font-weight="700" fill="var(--text)" font-family="ui-monospace,monospace">GP13</text>
+              <text x="260" y="180" text-anchor="middle" font-size="12" font-weight="700" fill="var(--text)" font-family="ui-monospace,monospace">GP9</text>
+              <path d="M140 205 V250 H180" fill="none" stroke="var(--blue)" stroke-width="4" stroke-linecap="round"/>
+              <path d="M260 205 V250 H220" fill="none" stroke="var(--blue)" stroke-width="4" stroke-linecap="round"/>
+              <circle cx="200" cy="250" r="26" fill="var(--card)" stroke="var(--pad-edge)" stroke-width="5"/>
+              <circle cx="200" cy="250" r="12" fill="var(--pad)" stroke="var(--pad-edge)" stroke-width="2"/>
+              <text x="200" y="295" text-anchor="middle" font-size="12" fill="var(--muted)">your switch</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="n">3</div>
+        <div>
+          <h3>Load the firmware</h3>
+          <p>Hold the board’s <b>BOOT</b> button while you plug it in. A drive called <code>RP2350</code> appears. Drag the file for your board onto it and it restarts as a MIDI Button.</p>
+          <div class="dl">
+            <a class="btn primary" href="firmware/midi-button-waveshare_rp2350_zero.uf2" download>RP2350-Zero firmware</a>
+            <a class="btn" href="firmware/midi-button-rpipico2.uf2" download>Pico 2 firmware</a>
+          </div>
+          <p class="small muted" id="fwInfo">Built automatically from the latest source.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="n">4</div>
+        <div>
+          <h3>Pick what it sends</h3>
+          <p>Open the configurator, click Connect, choose a note, CC or program change and hit Save. The LED on the RP2350-Zero shows the type: blue for notes, green for CCs, amber for program changes.</p>
+          <p><a class="btn primary" href="configure/">Open the configurator →</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <div class="head">
+      <h2>What would you press?</h2>
+      <p>A few ideas. It works with anything that takes MIDI: Ableton Live, Logic, GarageBand, Reaper, FL Studio, MainStage, browser synths, and more.</p>
+    </div>
+    <div class="ideas">
+      <div class="idea" style="--c: var(--green)"><b>Sustain pedal</b><span>Hold to sustain, like the real thing.</span><div class="tag">CC 64 · momentary</div></div>
+      <div class="idea" style="--c: var(--blue)"><b>Looper start/stop</b><span>Map it to record or play in your DAW.</span><div class="tag">Note · toggle</div></div>
+      <div class="idea" style="--c: var(--amber)"><b>Patch switcher</b><span>Jump to your solo sound mid-song.</span><div class="tag">Program change</div></div>
+      <div class="idea" style="--c: var(--green)"><b>Effect on/off</b><span>Kick in a delay or distortion and kick it back out.</span><div class="tag">CC · toggle</div></div>
+      <div class="idea" style="--c: var(--blue)"><b>Drum trigger</b><span>A big red button that plays a sample.</span><div class="tag">Note · momentary</div></div>
+      <div class="idea" style="--c: var(--green)"><b>Page turner</b><span>Map it in your sheet-music or stream app.</span><div class="tag">CC · momentary</div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="head"><h2>Questions</h2></div>
+    <div class="faq">
+      <details>
+        <summary>Which browsers can configure it?</summary>
+        <p>Chrome, Edge and other Chromium browsers on desktop and Android. Firefox works after it asks to install a small permission add-on. Safari and iOS don’t support Web MIDI, so they can’t configure it, but the button itself works fine on a Mac or iPad once it’s set up.</p>
+      </details>
+      <details>
+        <summary>Does it need a driver or an app?</summary>
+        <p>No. It’s a class-compliant USB MIDI device, the same kind as most keyboards and controllers. Your settings are stored on the button, so you only need the configurator when you want to change them.</p>
+      </details>
+      <details>
+        <summary>The configurator says “No MIDI Button found”.</summary>
+        <p>Check the cable carries data (plenty only charge), make sure the firmware is loaded (the board should show up as “MIDI Button”), and close any music app that might be holding the MIDI port open, then try again.</p>
+      </details>
+      <details>
+        <summary>Can I use different pins, or more buttons?</summary>
+        <p>Yes, with a small code change. The pins are at the top of the sketch. More buttons would need the settings and the configurator extended; pull requests welcome.</p>
+      </details>
+      <details>
+        <summary>What’s the difference between momentary and toggle?</summary>
+        <p>Momentary sends “on” when you press and “off” when you let go, like a sustain pedal. Toggle sends “on” the first time you press and “off” the next, so you don’t have to hold it down.</p>
+      </details>
+      <details>
+        <summary>How do I build the firmware myself?</summary>
+        <p>It’s a single Arduino sketch for the Raspberry Pi Pico / RP2350 core by Earle Philhower. The README on GitHub has the steps, the wiring and the SysEx protocol the configurator speaks.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="alt final">
+  <div class="wrap">
+    <h2>Got one plugged in?</h2>
+    <p>Set it up in about thirty seconds.</p>
+    <div class="cta">
+      <a class="btn primary" href="configure/">Open the configurator →</a>
+      <a class="btn" href="https://github.com/DavidWnek/midi-pedal">View the source</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span class="brand"><span class="logo" aria-hidden="true"></span>MIDI Button</span>
+    <span>An open-source, just-for-fun project. MIT licensed.</span>
+    <a class="sp" href="https://github.com/DavidWnek/midi-pedal">GitHub</a>
+  </div>
+</footer>
+
+<script>
+"use strict";
+// ---------- hero demo: a pretend button that "sends" MIDI and makes a little sound
+const COLORS = ["var(--blue)", "var(--green)", "var(--amber)"];
+const NOTE_NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+const noteName = n => NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1);
+const demo = document.getElementById("demo"), pad = document.getElementById("pad"), msg = document.getElementById("msg");
+let type = 0, down = false, program = 0, voice = null, audio = null;
+const NOTES = [60, 64, 67, 72, 67, 64];
+let noteIdx = 0;
+
+demo.style.setProperty("--type", COLORS[0]);
+demo.querySelector(".seg").addEventListener("click", e => {
+  const t = e.target.dataset && e.target.dataset.t;
+  if (t === undefined) return;
+  type = +t;
+  for (const b of demo.querySelectorAll(".seg button")) b.setAttribute("aria-pressed", String(b === e.target));
+  demo.style.setProperty("--type", COLORS[type]);
+  msg.innerHTML = "&nbsp;";
+});
+
+function show(kind, rest) { msg.innerHTML = `<span class="t">${kind}</span> ${rest}`; }
+
+function tone(freq, gain = .18, decay = 1.2) {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const t = audio.currentTime, o = audio.createOscillator(), o2 = audio.createOscillator(), g = audio.createGain();
+    o.type = "triangle"; o.frequency.value = freq;
+    o2.type = "sine"; o2.frequency.value = freq * 2;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + .01);
+    g.gain.exponentialRampToValueAtTime(gain * .5, t + .25);
+    o.connect(g); o2.connect(g); g.connect(audio.destination);
+    o.start(t); o2.start(t);
+    return { stop() { const n = audio.currentTime; g.gain.cancelScheduledValues(n); g.gain.setValueAtTime(g.gain.value, n); g.gain.exponentialRampToValueAtTime(.0001, n + decay * .3); o.stop(n + decay * .3); o2.stop(n + decay * .3); } };
+  } catch { return { stop() {} }; }
+}
+const hz = n => 440 * Math.pow(2, (n - 69) / 12);
+
+function press() {
+  if (down) return;
+  down = true;
+  pad.classList.add("lit");
+  if (type === 0) {
+    const n = NOTES[noteIdx++ % NOTES.length];
+    pad.dataset.n = n;
+    voice = tone(hz(n));
+    show("Note on", `${noteName(n)} · vel 100 · ch 1`);
+  } else if (type === 1) {
+    voice = tone(hz(48), .08, .4);
+    show("CC 64", "= 127 · ch 1");
+  } else {
+    program = program % 8 + 1;
+    voice = tone(hz(79), .1, .3);
+    show("Program", `${program} · ch 1`);
+    setTimeout(() => pad.classList.remove("lit"), 150);
+  }
+}
+function release() {
+  if (!down) return;
+  down = false;
+  if (voice) { voice.stop(); voice = null; }
+  if (type !== 2) pad.classList.remove("lit");
+  if (type === 0) show("Note off", `${noteName(+pad.dataset.n)} · ch 1`);
+  else if (type === 1) show("CC 64", "= 0 · ch 1");
+}
+pad.addEventListener("pointerdown", e => { e.preventDefault(); pad.setPointerCapture(e.pointerId); press(); });
+pad.addEventListener("pointerup", release);
+pad.addEventListener("pointercancel", release);
+pad.addEventListener("keydown", e => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); press(); } });
+pad.addEventListener("keyup", e => { if (e.key === " " || e.key === "Enter") release(); });
+document.addEventListener("keydown", e => {
+  if (e.key === " " && !e.repeat && document.activeElement === document.body && pad.getBoundingClientRect().bottom > 0) { e.preventDefault(); press(); }
+});
+document.addEventListener("keyup", e => { if (e.key === " " && document.activeElement === document.body) release(); });
+
+// ---------- firmware build info written by the Pages workflow
+fetch("firmware/version.json").then(r => r.ok ? r.json() : null).then(v => {
+  if (!v) return;
+  const date = v.date ? new Date(v.date).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "";
+  const el = document.getElementById("fwInfo");
+  el.textContent = `Firmware ${v.version}, built ${date} from `;
+  const a = document.createElement("a");
+  a.href = `https://github.com/DavidWnek/midi-pedal/commit/${v.commit}`;
+  a.textContent = v.commit.slice(0, 7);
+  el.append(a, ".");
+}).catch(() => {});
+</script>
+</body>
+</html>
