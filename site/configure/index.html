@@ -68,6 +68,13 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .connect ul { text-align: left; display: inline-block; margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
 .notice { border-radius: 10px; padding: 10px 12px; font-size: 14px; margin-top: 14px; background: var(--field); text-align: left; }
 .notice.error { color: var(--danger); }
+.notice p { margin: 6px 0; }
+.notice .blocked-title { color: var(--danger); }
+.notice .steps { display: block; margin: 6px 0 10px; padding-left: 20px; color: var(--text); font-size: 14px; }
+.notice .steps li { margin-bottom: 4px; }
+.notice code { font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; word-break: break-all; background: var(--card); padding: 1px 4px; border-radius: 4px; }
+.notice-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.notice-actions button { padding: 7px 14px; font-size: 14px; }
 
 .grid { display: grid; grid-template-columns: 220px 1fr; gap: 16px; align-items: start; }
 @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
@@ -337,6 +344,10 @@ async function connect(all = false) {
   if (!window.isSecureContext) {
     return showConnectMsg("This page has to be served over HTTPS (or from localhost) for MIDI to work.", true);
   }
+  if (connecting) return;
+  // A blocked permission never prompts again, so don't pretend to ask.
+  if (!access && await midiPermission() === "denied") return showBlocked();
+  connecting = true;
   $("connectBtn").disabled = true;
   $("connectBtn").textContent = "Looking for your button…";
   try {
@@ -360,13 +371,76 @@ async function connect(all = false) {
     await selectDevice(found[0]);
   } catch (err) {
     const denied = err && (err.name === "SecurityError" || err.name === "NotAllowedError");
-    showConnectMsg(denied
-      ? "MIDI access was blocked. Click the icon at the left of the address bar, allow MIDI devices, then try again."
-      : `Something went wrong: ${esc(err.message || String(err))}`, true);
+    if (!denied) {
+      showConnectMsg(`Something went wrong: ${esc(err.message || String(err))}`, true);
+    } else if (await midiPermission() === "denied") {
+      showBlocked();
+    } else {
+      // Prompt closed without an answer: the browser will ask again.
+      showConnectMsg("The browser didn’t get permission to use MIDI. Click <b>Connect</b> to see the question again, and choose <b>Allow</b>.", true);
+    }
   } finally {
+    connecting = false;
     $("connectBtn").disabled = false;
     $("connectBtn").textContent = "Connect";
   }
+}
+
+// ---------------------------------------------------------------- MIDI permission
+let connecting = false;
+let permStatus = null;
+
+// "granted", "prompt", "denied", or null where the Permissions API doesn't know about MIDI.
+async function midiPermission() {
+  try {
+    if (!permStatus) {
+      permStatus = await navigator.permissions.query({ name: "midi", sysex: true });
+      permStatus.onchange = onPermissionChange;
+    }
+    return permStatus.state;
+  } catch { return null; }
+}
+
+function onPermissionChange() {
+  if (permStatus.state === "granted" && !dev) {
+    connect();
+  } else if (permStatus.state === "prompt" && !dev) {
+    showConnectMsg("MIDI is no longer blocked. Click <b>Connect</b> and choose <b>Allow</b>.");
+  } else if (permStatus.state === "denied") {
+    access = null;
+    if (dev) { dev = null; setView(false); }
+    showBlocked();
+  }
+}
+
+function settingsUrl() {
+  const ua = navigator.userAgent;
+  const scheme = /Edg\//.test(ua) ? "edge" : /OPR\//.test(ua) ? "opera" : navigator.brave ? "brave" : "chrome";
+  return `${scheme}://settings/content/siteDetails?site=${encodeURIComponent(location.origin)}`;
+}
+
+function showBlocked() {
+  const chromium = !!(navigator.userAgentData && navigator.userAgentData.brands.some(b => /Chromium/.test(b.brand)));
+  const url = settingsUrl();
+  showConnectMsg(`
+    <b class="blocked-title">MIDI is blocked for this site</b>
+    <p>Your browser won’t ask again until you allow it:</p>
+    <ol class="steps">
+      <li>Click the <b>site settings icon</b> at the left end of the address bar${chromium ? " (or the crossed-out MIDI icon at the right end)" : ""}.</li>
+      <li>Find <b>MIDI devices</b>${chromium ? " (it may say “MIDI device control”)" : ""} and set it to <b>Allow</b>.</li>
+      <li>Come back to this tab. It connects by itself once MIDI is allowed.</li>
+    </ol>
+    ${chromium ? `<p class="small muted">Or paste this into the address bar: <code id="settingsUrl">${esc(url)}</code></p>` : ""}
+    <div class="notice-actions">
+      ${chromium ? `<button id="copySettings">Copy settings address</button>` : ""}
+      <button id="retryBtn">Try again</button>
+    </div>`);
+  const copy = $("copySettings");
+  if (copy) copy.onclick = async () => {
+    try { await navigator.clipboard.writeText(url); copy.textContent = "Copied"; }
+    catch { copy.textContent = "Select the address above and copy it"; }
+  };
+  $("retryBtn").onclick = () => connect();
 }
 
 async function selectDevice(d) {
@@ -610,6 +684,10 @@ bindForm();
 if (!navigator.requestMIDIAccess) {
   showConnectMsg("This browser can’t talk to MIDI devices. Open this page in Chrome or Edge on a computer or Android phone.", true);
   $("connectBtn").disabled = true;
+} else {
+  // Already allowed on an earlier visit: connect without making them click.
+  // Also starts watching the permission, so unblocking it reconnects by itself.
+  midiPermission().then(state => { if (state === "granted") connect(); });
 }
 </script>
 </body>
