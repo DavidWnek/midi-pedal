@@ -88,6 +88,11 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .pad::after { content: ""; position: absolute; inset: 34px; border-radius: 50%; border: 2px solid var(--pad-edge); transition: border-color .08s, background .08s; }
 .pad.lit { border-color: var(--type); box-shadow: 0 0 0 6px color-mix(in srgb, var(--type) 22%, transparent), 0 0 36px color-mix(in srgb, var(--type) 55%, transparent); }
 .pad.lit::after { border-color: var(--type); background: color-mix(in srgb, var(--type) 30%, transparent); }
+.pads { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; }
+.padwrap { display: flex; flex-direction: column; align-items: center; }
+.padlabel { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.pads.two .pad { width: 108px; height: 108px; margin: 8px auto 12px; }
+.pads.two .pad::after { inset: 26px; }
 .last { font-variant-numeric: tabular-nums; min-height: 1.5em; font-size: 14px; }
 .log { list-style: none; margin: 12px 0 0; padding: 12px 0 0; border-top: 1px solid var(--line); font: 12px/1.7 ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--muted); text-align: left; min-height: 6.8em; }
 
@@ -156,8 +161,17 @@ select:focus, input:focus { border-color: var(--accent); outline: none; }
     <div class="grid">
       <section class="card preview" id="previewCard">
         <h2>Try it</h2>
-        <p class="muted small">Press your button.</p>
-        <div class="pad" id="pad" aria-hidden="true"></div>
+        <p class="muted small" id="tryHint">Press your button.</p>
+        <div class="pads" id="pads">
+          <div class="padwrap">
+            <div class="padlabel" id="padShortLabel" hidden>Short press</div>
+            <div class="pad" id="pad" aria-hidden="true"></div>
+          </div>
+          <div class="padwrap" id="longWrap" hidden>
+            <div class="padlabel">Long press</div>
+            <div class="pad" id="padLong" aria-hidden="true"></div>
+          </div>
+        </div>
         <div class="last" id="last" aria-live="polite">&nbsp;</div>
         <ul class="log" id="log"></ul>
       </section>
@@ -572,6 +586,7 @@ function renderForm() {
   $("channel").value = cfg.channel;
   $("longOn").checked = !!cfg.longOn;
   $("longFields").hidden = !cfg.longOn;
+  renderPads();
   $("longNote").value = cfg.longNote;
   $("longVel").value = cfg.longVelocity;
   $("holdMs").value = cfg.holdMs;
@@ -691,7 +706,17 @@ function setSaveState(text, error = false, isDirty = false) {
 }
 
 // ---------------------------------------------------------------- live preview
-let flashTimer = 0;
+// With long press on, two pads: one for the short press, one for the long-press note.
+// The long note is the only message on the long-press note number and channel, so a
+// note with that number counts as long unless the short press is itself that note.
+function renderPads() {
+  const two = !!cfg && !!cfg.longOn;
+  $("pads").classList.toggle("two", two);
+  $("longWrap").hidden = !two;
+  $("padShortLabel").hidden = !two;
+  $("tryHint").textContent = two ? "Press your button, or hold it for the long press." : "Press your button.";
+}
+
 function showActivity(d) {
   const st = d[0] & 0xF0, ch = (d[0] & 0x0F) + 1;
   let text = null, lit = null;
@@ -700,6 +725,9 @@ function showActivity(d) {
   else if (st === 0xB0) { text = `CC ${d[1]} = ${d[2]}`; lit = cfg && d[2] === cfg.onValue && cfg.onValue !== cfg.offValue; }
   else if (st === 0xC0) { text = `Program ${d[1] + 1}`; lit = "flash"; }
   if (!text) return;
+  const isLong = !!cfg && !!cfg.longOn && (st === 0x90 || st === 0x80) && d[1] === cfg.longNote &&
+    !(cfg.type === 0 && cfg.number === cfg.longNote);
+  if (isLong) text = "Long: " + text;
   text += `  ch ${ch}`;
   $("last").textContent = text;
   const li = document.createElement("li");
@@ -707,9 +735,9 @@ function showActivity(d) {
   const log = $("log");
   log.prepend(li);
   while (log.children.length > 5) log.lastChild.remove();
-  const pad = $("pad");
-  clearTimeout(flashTimer);
-  if (lit === "flash") { pad.classList.add("lit"); flashTimer = setTimeout(() => pad.classList.remove("lit"), 160); }
+  const pad = isLong ? $("padLong") : $("pad");
+  clearTimeout(pad._flash);
+  if (lit === "flash") { pad.classList.add("lit"); pad._flash = setTimeout(() => pad.classList.remove("lit"), 160); }
   else pad.classList.toggle("lit", lit);
 }
 
@@ -722,7 +750,7 @@ function setView(connected) {
   const pill = $("pill");
   pill.className = "pill" + (connected ? " on" : "");
   $("pillText").textContent = connected ? "Connected" : "Not connected";
-  if (!connected) $("pad").classList.remove("lit");
+  if (!connected) { $("pad").classList.remove("lit"); $("padLong").classList.remove("lit"); }
 }
 
 function renderDeviceLine() {
