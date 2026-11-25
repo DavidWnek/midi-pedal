@@ -111,6 +111,10 @@ select:focus, input:focus { border-color: var(--accent); outline: none; }
 .range { display: flex; align-items: center; gap: 12px; }
 .range input { flex: 1; accent-color: var(--type); }
 .range output { width: 2.5em; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.range output.wide { width: 3.5em; }
+.check { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--type); flex: none; }
+.divider { border: none; border-top: 1px solid var(--line); margin: 20px 0 18px; }
 
 .bar {
   position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--line);
@@ -216,6 +220,31 @@ select:focus, input:focus { border-color: var(--accent); outline: none; }
           </div>
         </div>
         <p class="hint" id="modeHint"></p>
+
+        <hr class="divider">
+        <div class="field">
+          <label class="check"><input type="checkbox" id="longOn"> Long press plays a second note</label>
+          <p class="hint">A press shorter than the hold time does the short press above. The short press fires when you let go, so the two can be told apart.</p>
+        </div>
+
+        <div id="longFields" hidden>
+          <div class="field">
+            <label class="label" for="holdMs">Hold for</label>
+            <div class="range"><input type="range" id="holdMs" min="100" max="5000" step="50"><output id="holdOut" class="wide"></output></div>
+          </div>
+          <div class="field">
+            <label class="label" for="longNote">Long press note</label>
+            <div class="num">
+              <input type="number" id="longNote" min="0" max="127" step="1">
+              <span class="tag" id="longNoteName"></span>
+            </div>
+          </div>
+          <div class="field">
+            <label class="label" for="longVel">Long press velocity</label>
+            <div class="range"><input type="range" id="longVel" min="1" max="127"><output id="longVelOut"></output></div>
+          </div>
+          <p class="hint">The note plays while you keep holding, and stops when you let go. Same MIDI channel as above.</p>
+        </div>
       </section>
     </div>
 
@@ -246,6 +275,7 @@ const HDR = [0x7D, 0x4D, 0x42];
 const CMD = { HELLO: 1, CONFIG: 2, SET: 3, SAVE: 4, DEFAULTS: 5, ERROR: 0x7F };
 const ERRORS = { 1: "bad message length", 2: "value out of range", 3: "flash write failed", 4: "unknown command" };
 const NAME_RE = /midi button/i;
+const PROTOCOL = 2;         // SysEx protocol version this page speaks (firmware 1.1+)
 
 const NOTE_NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
 const noteName = n => NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1);
@@ -257,7 +287,7 @@ const CC_NAMES = { 0: "Bank select", 1: "Modulation", 2: "Breath", 4: "Foot cont
 let access = null;
 let devices = [];           // [{input, output, info}]
 let dev = null;             // current device
-let cfg = null;             // {type, channel, number, onValue, offValue, mode}
+let cfg = null;             // {type, channel, number, onValue, offValue, mode, longOn, longNote, longVelocity, holdMs}
 let dirty = false;
 let waiters = [];           // pending replies
 let setTimer = 0;
@@ -444,6 +474,11 @@ function showBlocked() {
 }
 
 async function selectDevice(d) {
+  if (d.info.proto !== PROTOCOL) {
+    dev = null;
+    showConnectMsg(`This button runs firmware ${esc(d.info.version)}, which this page can’t configure. Load the latest firmware from the <a href="../#build" style="color: var(--accent)">home page</a>, then connect again.`, true);
+    return;
+  }
   dev = d;
   try { await d.output.open(); await d.input.open(); } catch { /* opened implicitly by send */ }
   sysex(d.output, CMD.CONFIG);
@@ -476,10 +511,29 @@ function onStateChange(e) {
 const needsRescan = () => [...access.outputs.values()].filter(o => o.state === "connected" && NAME_RE.test(o.name || "")).length !== devices.length;
 
 // ---------------------------------------------------------------- config <-> form
+// Wire layout of the config (see the README): 11 bytes, then a dirty flag in a GET reply.
+const WIRE_LEN = 11;
+function parseConfig(p) {
+  return {
+    cfg: {
+      type: p[0], channel: p[1], number: p[2], onValue: p[3], offValue: p[4], mode: p[5],
+      longOn: p[6], longNote: p[7], longVelocity: p[8], holdMs: p[9] | (p[10] << 7),
+    },
+    dirty: !!p[WIRE_LEN],
+  };
+}
+function wireConfig(c) {
+  return [c.type, c.channel, c.number, c.onValue, c.offValue, c.mode,
+    c.longOn, c.longNote, c.longVelocity, c.holdMs & 0x7F, (c.holdMs >> 7) & 0x7F];
+}
+function sendConfig(output) {
+  sysex(output, CMD.SET, wireConfig(cfg));
+}
+
 function applyDeviceConfig(p) {
-  const [type, channel, number, onValue, offValue, mode, d] = p;
-  cfg = { type, channel, number, onValue, offValue, mode };
-  dirty = !!d;
+  const parsed = parseConfig(p);
+  cfg = parsed.cfg;
+  dirty = parsed.dirty;
   renderForm();
   renderSaveState();
 }
@@ -489,9 +543,9 @@ function handleConfigReply(r) {
     setSaveState(`The button rejected that: ${ERRORS[r.payload[1]] || "error " + r.payload[1]}`, true);
     return;
   }
-  const [type, channel, number, onValue, offValue, mode, d] = r.payload;
-  const incoming = { type, channel, number, onValue, offValue, mode };
-  dirty = !!d;
+  const parsed = parseConfig(r.payload);
+  const incoming = parsed.cfg;
+  dirty = parsed.dirty;
   // Only redraw the form when the button disagrees with it (defaults, another tab, etc.).
   if (JSON.stringify(incoming) !== JSON.stringify(cfg) && !setTimer) { cfg = incoming; renderForm(); }
   renderSaveState();
@@ -503,7 +557,7 @@ function pushConfig() {
     setTimer = 0;
     if (!dev) return;
     try {
-      sysex(dev.output, CMD.SET, [cfg.type, cfg.channel, cfg.number, cfg.onValue, cfg.offValue, cfg.mode]);
+      sendConfig(dev.output);
     } catch (err) { setSaveState("Couldn’t reach the button.", true); }
   }, 120);
   dirty = true;
@@ -516,6 +570,11 @@ function renderForm() {
   for (const b of $("modeSeg").children) b.setAttribute("aria-pressed", String(+b.dataset.v === cfg.mode));
   for (const f of document.querySelectorAll("[data-for]")) f.hidden = !f.dataset.for.split(" ").includes(String(cfg.type));
   $("channel").value = cfg.channel;
+  $("longOn").checked = !!cfg.longOn;
+  $("longFields").hidden = !cfg.longOn;
+  $("longNote").value = cfg.longNote;
+  $("longVel").value = cfg.longVelocity;
+  $("holdMs").value = cfg.holdMs;
   if (cfg.type === 0) {
     $("note").value = cfg.number;
     $("velocity").value = Math.max(1, cfg.onValue);
@@ -535,6 +594,9 @@ function renderLabels() {
   $("ccName").textContent = CC_NAMES[cfg.number] || "";
   $("ccOnOut").value = $("ccOn").value;
   $("ccOffOut").value = $("ccOff").value;
+  $("longNoteName").textContent = noteName(cfg.longNote);
+  $("longVelOut").value = $("longVel").value;
+  $("holdOut").value = (cfg.holdMs / 1000).toFixed(2).replace(/0$/, "") + " s";
   const hints = {
     0: ["Note on while held, note off when you let go.", "First press starts the note, the next press stops it."],
     1: ["Sends the pressed value, then the released value when you let go.", "Alternates between the pressed and released values on each press."],
@@ -581,6 +643,10 @@ function bindForm() {
   range("velocity", "onValue");
   range("ccOn", "onValue");
   range("ccOff", "offValue");
+  num("longNote", "longNote", 0, 127);
+  range("longVel", "longVelocity");
+  range("holdMs", "holdMs");
+  $("longOn").onchange = () => { cfg.longOn = $("longOn").checked ? 1 : 0; renderForm(); pushConfig(); };
 
   $("saveBtn").onclick = save;
   $("resetBtn").onclick = () => { if (dev) { clearTimeout(setTimer); setTimer = 0; sysex(dev.output, CMD.DEFAULTS); waitFor(dev.input, r => r.cmd === CMD.CONFIG).then(r => applyDeviceConfig(r.payload)).catch(() => {}); } };
@@ -599,10 +665,10 @@ async function save() {
   try {
     if (setTimer) {  // flush the pending change first
       clearTimeout(setTimer); setTimer = 0;
-      sysex(dev.output, CMD.SET, [cfg.type, cfg.channel, cfg.number, cfg.onValue, cfg.offValue, cfg.mode]);
+      sendConfig(dev.output);
     }
     sysex(dev.output, CMD.SAVE);
-    const r = await waitFor(dev.input, r => (r.cmd === CMD.CONFIG && r.payload[6] === 0) || r.cmd === CMD.ERROR, 2000);
+    const r = await waitFor(dev.input, r => (r.cmd === CMD.CONFIG && r.payload[WIRE_LEN] === 0) || r.cmd === CMD.ERROR, 2000);
     if (r.cmd === CMD.ERROR) throw new Error(ERRORS[r.payload[1]]);
     dirty = false;
     renderSaveState("Saved. The button keeps this setting when unplugged.");

@@ -1,4 +1,4 @@
-// MIDI Button: one button on an RP2350 that sends one MIDI message over USB.
+// MIDI Button: one button on an RP2350 that sends MIDI messages over USB.
 //
 // The device is a class-compliant USB MIDI port named "MIDI Button". It is configured
 // over the same port with SysEx, so the web configurator (web/index.html) only needs
@@ -29,70 +29,127 @@ static const uint32_t LOCKOUT_MS = 30;    // ignore the switch this long after a
 static const char *DEVICE_NAME = "MIDI Button";
 
 #define FW_MAJOR 1
-#define FW_MINOR 0
+#define FW_MINOR 1
 #define FW_PATCH 0
-#define PROTOCOL_VERSION 1
+#define PROTOCOL_VERSION 2
 
 // ---------------------------------------------------------------- config
 
 enum : uint8_t { TYPE_NOTE = 0, TYPE_CC = 1, TYPE_PC = 2, TYPE_COUNT };
 enum : uint8_t { MODE_MOMENTARY = 0, MODE_TOGGLE = 1, MODE_COUNT };
 
+static const uint16_t HOLD_MIN_MS = 100;  // shortest long-press hold
+static const uint16_t HOLD_MAX_MS = 5000; // longest long-press hold
+
 struct Config {
-  uint8_t type;      // TYPE_*
-  uint8_t channel;   // 0-15 (shown to users as 1-16)
-  uint8_t number;    // note, CC number or program, 0-127
-  uint8_t onValue;   // note velocity or CC value sent on press, 0-127
-  uint8_t offValue;  // CC value sent on release (or second toggle press), 0-127
-  uint8_t mode;      // MODE_*
+  uint8_t type;        // TYPE_*
+  uint8_t channel;     // 0-15 (shown to users as 1-16)
+  uint8_t number;      // note, CC number or program, 0-127
+  uint8_t onValue;     // note velocity or CC value sent on press, 0-127
+  uint8_t offValue;    // CC value sent on release (or second toggle press), 0-127
+  uint8_t mode;        // MODE_*
+  uint8_t longOn;      // 1 = holding past holdMs plays a second note
+  uint8_t longNote;    // that note, 0-127 (same channel)
+  uint8_t longVelocity;// its velocity, 1-127
+  uint16_t holdMs;     // how long to hold before the long press fires
 };
-static const size_t CONFIG_BYTES = sizeof(Config);
 
-static const Config DEFAULT_CONFIG = {TYPE_NOTE, 0, 60, 100, 0, MODE_MOMENTARY};
+// Config as it travels over SysEx and sits in flash: holdMs is split into two 7-bit bytes.
+static const size_t WIRE_BYTES = 11;
+static const size_t WIRE_BYTES_V1 = 6;   // firmware 1.0 layout, migrated on load
 
-struct Stored {
-  uint32_t magic;
-  uint8_t version;
-  Config cfg;
-  uint8_t checksum;
-};
-static const uint32_t STORE_MAGIC = 0x4D424331;  // "MBC1"
-static const uint8_t STORE_VERSION = 1;
-
-static Config cfg;    // live config
-static Config saved;  // what is in flash
+static const Config DEFAULT_CONFIG = {TYPE_NOTE, 0, 60, 100, 0, MODE_MOMENTARY, 0, 64, 100, 500};
 
 static bool configValid(const Config &c) {
   return c.type < TYPE_COUNT && c.channel < 16 && c.number < 128 && c.onValue < 128 &&
-         c.offValue < 128 && c.mode < MODE_COUNT;
+         c.offValue < 128 && c.mode < MODE_COUNT && c.longOn < 2 && c.longNote < 128 &&
+         c.longVelocity >= 1 && c.longVelocity < 128 &&
+         c.holdMs >= HOLD_MIN_MS && c.holdMs <= HOLD_MAX_MS;
 }
 
-static uint8_t checksum(const Config &c) {
-  const uint8_t *p = (const uint8_t *)&c;
+static void encodeConfig(const Config &c, uint8_t *o) {
+  o[0] = c.type;
+  o[1] = c.channel;
+  o[2] = c.number;
+  o[3] = c.onValue;
+  o[4] = c.offValue;
+  o[5] = c.mode;
+  o[6] = c.longOn;
+  o[7] = c.longNote;
+  o[8] = c.longVelocity;
+  o[9] = c.holdMs & 0x7F;
+  o[10] = (c.holdMs >> 7) & 0x7F;
+}
+
+// Returns false (and leaves the caller to reject it) when the values are out of range.
+static bool decodeConfig(const uint8_t *i, Config &c) {
+  c.type = i[0];
+  c.channel = i[1];
+  c.number = i[2];
+  c.onValue = i[3];
+  c.offValue = i[4];
+  c.mode = i[5];
+  c.longOn = i[6];
+  c.longNote = i[7];
+  c.longVelocity = i[8];
+  c.holdMs = (uint16_t)(i[9] | (i[10] << 7));
+  return configValid(c);
+}
+
+static uint8_t checksum(const uint8_t *p, size_t n) {
   uint8_t sum = 0xA5;
-  for (size_t i = 0; i < CONFIG_BYTES; i++) sum = (uint8_t)((sum << 1 | sum >> 7) ^ p[i]);
+  for (size_t i = 0; i < n; i++) sum = (uint8_t)((sum << 1 | sum >> 7) ^ p[i]);
   return sum;
 }
 
 static bool sameConfig(const Config &a, const Config &b) {
-  return memcmp(&a, &b, CONFIG_BYTES) == 0;
+  uint8_t wa[WIRE_BYTES], wb[WIRE_BYTES];
+  encodeConfig(a, wa);
+  encodeConfig(b, wb);
+  return memcmp(wa, wb, WIRE_BYTES) == 0;
 }
 
+static Config cfg;    // live config
+static Config saved;  // what is in flash
+
+// Flash layout: magic (4, little-endian) | version (1) | config (11) | checksum (1)
+static const uint32_t STORE_MAGIC = 0x4D424331;  // "MBC1"
+static const uint8_t STORE_VERSION = 2;
+static const uint8_t STORE_VERSION_1 = 1;        // magic | version | 6 bytes | checksum
+static const size_t STORE_BYTES = 5 + WIRE_BYTES + 1;
+
 static void loadConfig() {
-  Stored s;
-  EEPROM.get(0, s);
-  if (s.magic == STORE_MAGIC && s.version == STORE_VERSION && configValid(s.cfg) &&
-      s.checksum == checksum(s.cfg)) {
-    cfg = s.cfg;
-  } else {
-    cfg = DEFAULT_CONFIG;
+  uint8_t b[STORE_BYTES];
+  for (size_t i = 0; i < STORE_BYTES; i++) b[i] = EEPROM.read(i);
+  uint32_t magic = b[0] | ((uint32_t)b[1] << 8) | ((uint32_t)b[2] << 16) | ((uint32_t)b[3] << 24);
+
+  cfg = DEFAULT_CONFIG;
+  if (magic == STORE_MAGIC && b[4] == STORE_VERSION &&
+      checksum(b + 5, WIRE_BYTES) == b[5 + WIRE_BYTES]) {
+    Config c;
+    if (decodeConfig(b + 5, c)) cfg = c;
+  } else if (magic == STORE_MAGIC && b[4] == STORE_VERSION_1 &&
+             checksum(b + 5, WIRE_BYTES_V1) == b[5 + WIRE_BYTES_V1]) {
+    // Firmware 1.0 saved only the six basic fields; the long press takes its defaults.
+    uint8_t w[WIRE_BYTES];
+    encodeConfig(DEFAULT_CONFIG, w);
+    memcpy(w, b + 5, WIRE_BYTES_V1);
+    Config c;
+    if (decodeConfig(w, c)) cfg = c;
   }
   saved = cfg;
 }
 
 static bool saveConfig() {
-  Stored s = {STORE_MAGIC, STORE_VERSION, cfg, checksum(cfg)};
-  EEPROM.put(0, s);
+  uint8_t b[STORE_BYTES];
+  b[0] = STORE_MAGIC & 0xFF;
+  b[1] = (STORE_MAGIC >> 8) & 0xFF;
+  b[2] = (STORE_MAGIC >> 16) & 0xFF;
+  b[3] = (STORE_MAGIC >> 24) & 0xFF;
+  b[4] = STORE_VERSION;
+  encodeConfig(cfg, b + 5);
+  b[5 + WIRE_BYTES] = checksum(b + 5, WIRE_BYTES);
+  for (size_t i = 0; i < STORE_BYTES; i++) EEPROM.write(i, b[i]);
   bool ok = EEPROM.commit();
   if (ok) saved = cfg;
   return ok;
@@ -120,8 +177,9 @@ static void ledFlash(uint32_t ms, bool white = false) {
   flashWhite = white;
 }
 
-// Lit while the "on" message is in effect (held, or latched in toggle mode), flashes on a
-// program change or save, dim otherwise. On a NeoPixel the colour shows the message type.
+// Lit while a message is in effect (held, latched in toggle mode, or the long-press note
+// sounding), flashes on a program change or save, dim otherwise. On a NeoPixel the colour
+// shows the message type.
 static void ledUpdate(bool active) {
   bool flashing = (int32_t)(flashUntil - millis()) > 0;
 #if defined(PIN_NEOPIXEL)
@@ -158,7 +216,10 @@ static void sendPacket(uint8_t cin, uint8_t b1, uint8_t b2, uint8_t b3) {
   }
 }
 
-static bool active = false;  // the "on" message has been sent and not yet undone
+static bool active = false;      // the short-press message has been sent and not yet undone
+static bool longActive = false;  // the long-press note is sounding
+static bool pendingShort = false;  // pressed, and not yet known to be short or long
+static uint32_t pressedAt = 0;
 
 static void sendOn() {
   uint8_t ch = cfg.channel & 0x0F;
@@ -178,6 +239,15 @@ static void sendOff() {
   }
 }
 
+static void sendLongOn() {
+  sendPacket(0x09, 0x90 | (cfg.channel & 0x0F), cfg.longNote, cfg.longVelocity);
+}
+
+static void sendLongOff() {
+  sendPacket(0x08, 0x80 | (cfg.channel & 0x0F), cfg.longNote, 0);
+}
+
+// The short-press action. Momentary and toggle work as before.
 static void onPress() {
   if (cfg.type == TYPE_PC) {
     sendOn();
@@ -198,10 +268,36 @@ static void onRelease() {
   }
 }
 
+// With long press on, the short action waits for the release, because only then is it
+// known to be short. Without it, the action fires straight away as it always has.
+static void buttonDown(uint32_t now) {
+  if (cfg.longOn) {
+    pendingShort = true;
+    pressedAt = now;
+  } else {
+    onPress();
+  }
+}
+
+static void buttonUp() {
+  if (longActive) {
+    sendLongOff();
+    longActive = false;
+  }
+  if (pendingShort) {
+    pendingShort = false;
+    onPress();
+  }
+  onRelease();
+}
+
 // Undo a held or latched message before the config changes, so no note hangs.
 static void releaseActive() {
   if (active) sendOff();
   active = false;
+  if (longActive) sendLongOff();
+  longActive = false;
+  pendingShort = false;
 }
 
 // ---------------------------------------------------------------- SysEx config protocol
@@ -209,8 +305,8 @@ static void releaseActive() {
 //   F0 7D 4D 42 <cmd> <payload...> F7      (7D = non-commercial ID, 4D 42 = "MB")
 //
 //   01 HELLO    host: <nonce>             device: 01 <nonce> <proto> <maj> <min> <patch> <16 id nibbles>
-//   02 GET      host: -                   device: 02 <config 6 bytes> <dirty>
-//   03 SET      host: <config 6 bytes>    device: 02 ...  (applied live, not saved)
+//   02 GET      host: -                   device: 02 <config 11 bytes> <dirty>
+//   03 SET      host: <config 11 bytes>   device: 02 ...  (applied live, not saved)
 //   04 SAVE     host: -                   device: 02 ...  (written to flash)
 //   05 DEFAULTS host: -                   device: 02 ...  (applied live, not saved)
 //   7F ERROR                              device: 7F <cmd> <code>  1=bad length 2=bad value 3=flash 4=unknown
@@ -247,9 +343,9 @@ static void sendError(uint8_t cmd, uint8_t code) {
 }
 
 static void sendConfig() {
-  uint8_t p[CONFIG_BYTES + 1];
-  memcpy(p, &cfg, CONFIG_BYTES);
-  p[CONFIG_BYTES] = sameConfig(cfg, saved) ? 0 : 1;
+  uint8_t p[WIRE_BYTES + 1];
+  encodeConfig(cfg, p);
+  p[WIRE_BYTES] = sameConfig(cfg, saved) ? 0 : 1;
   sendSysex(CMD_GET, p, sizeof(p));
 }
 
@@ -284,10 +380,9 @@ static void handleSysex(const uint8_t *d, size_t len) {
       sendConfig();
       break;
     case CMD_SET: {
-      if (n != CONFIG_BYTES) { sendError(cmd, 1); break; }
+      if (n != WIRE_BYTES) { sendError(cmd, 1); break; }
       Config c;
-      memcpy(&c, p, CONFIG_BYTES);
-      if (!configValid(c)) { sendError(cmd, 2); break; }
+      if (!decodeConfig(p, c)) { sendError(cmd, 2); break; }
       if (!sameConfig(c, cfg)) {
         releaseActive();
         cfg = c;
@@ -359,6 +454,8 @@ static bool readRaw() {
 //    beyond 1 ms, but a single noise spike is ignored),
 //  - a release needs the switch open for RELEASE_MS,
 //  - after either, the switch is ignored for LOCKOUT_MS.
+// With long press on, a press that is still held after holdMs plays the long-press note
+// instead of the short press.
 static bool stableDown = false;
 static uint8_t downRun = 0;      // consecutive closed samples
 static uint8_t upRun = 0;        // consecutive open samples
@@ -378,11 +475,17 @@ static void pollButton() {
   if (!stableDown && downRun >= PRESS_SAMPLES) {
     stableDown = true;
     lastEdge = now;
-    onPress();
+    buttonDown(now);
   } else if (stableDown && upRun >= RELEASE_MS) {
     stableDown = false;
     lastEdge = now;
-    onRelease();
+    buttonUp();
+  }
+
+  if (stableDown && pendingShort && now - pressedAt >= cfg.holdMs) {
+    pendingShort = false;
+    longActive = true;
+    sendLongOn();
   }
 }
 
@@ -420,5 +523,5 @@ void setup() {
 void loop() {
   pollMidiIn();
   pollButton();
-  ledUpdate(active);
+  ledUpdate(active || longActive);
 }

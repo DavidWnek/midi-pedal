@@ -78,6 +78,13 @@ them. **Save to button** writes them to flash so they survive unplugging.
 | On release | note off | value when released | nothing |
 | Toggle mode | 1st press on, 2nd press off | alternates the two values | n/a |
 
+**Long press** (optional) is a second note. Tick *Long press plays a second note*, set how
+long to hold (0.1 to 5 seconds) and which note and velocity to send. The note plays while
+you keep holding and stops when you let go. A press shorter than the hold time does the
+short press as usual. Because the button can't tell a short press from a long one until it's
+released, the short press fires on release when long press is on, so it can't start
+sooner than that. With long press off, nothing changes.
+
 Safari (macOS and iOS) has no Web MIDI, so it can't configure the button. The button
 still works there as a MIDI device. Firefox can, after it asks to install its site
 permission add-on.
@@ -117,10 +124,15 @@ F0 7D 4D 42 <cmd> <payload...> F7
 | `05` DEFAULTS | nothing | `02 <config> <dirty>`. Defaults applied live, not saved. |
 | `7F` ERROR | | `7F <cmd> <code>`: 1 bad length, 2 value out of range, 3 flash write failed, 4 unknown command |
 
-`<config>` is six bytes: `type` (0 note, 1 CC, 2 program change), `channel` (0-15),
-`number`, `onValue`, `offValue`, `mode` (0 momentary, 1 toggle). `dirty` is 1 when the live
-config differs from what is saved. Defaults are note 60 (C4), velocity 100, channel 1,
-momentary.
+`<config>` is eleven bytes: `type` (0 note, 1 CC, 2 program change), `channel` (0-15),
+`number`, `onValue`, `offValue`, `mode` (0 momentary, 1 toggle), `longOn` (0/1),
+`longNote` (0-127), `longVelocity` (1-127), then `holdMs` as two 7-bit bytes, low then high
+(100-5000). `dirty` is 1 when the live config differs from what is saved. Defaults are note
+60 (C4), velocity 100, channel 1, momentary, long press off (note 64, velocity 100, hold 500 ms).
+
+Protocol 2 (firmware 1.1) added the long-press fields. Protocol 1 (firmware 1.0) used six
+bytes; the button reads those settings from flash after an update and fills in the long-press
+defaults.
 
 The page finds the button by sending HELLO with a different nonce to every output port
 named "MIDI Button". The input that answers with a given nonce belongs to the same device,
