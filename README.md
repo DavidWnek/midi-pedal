@@ -83,7 +83,8 @@ long to hold (0.1 to 5 seconds) and which note and velocity to send. The note pl
 you keep holding and stops when you let go. A press shorter than the hold time does the
 short press as usual. Because the button can't tell a short press from a long one until it's
 released, the short press fires on release when long press is on, so it can't start
-sooner than that. With long press off, nothing changes.
+sooner than that. With long press on, a release has to last 60 ms before it counts, so a
+bounce or a quick re-press is treated as part of the same press. With long press off, nothing changes.
 
 Safari (macOS and iOS) has no Web MIDI, so it can't configure the button. The button
 still works there as a MIDI device. Firefox can, after it asks to install its site

@@ -25,12 +25,16 @@ static const int BUTTON_RETURN_PIN = 9;   // other side of the switch, held low;
 #define USE_BOOTSEL_AS_BUTTON 1           // BOOT button acts as the button too
 static const uint8_t PRESS_SAMPLES = 2;   // 1 ms samples that must read closed to fire
 static const uint8_t RELEASE_MS = 15;     // open this long before a release counts
+// With long press on, a release must last this long. A shorter gap is chatter or a bounce
+// that would otherwise end the press early and start a new one, firing the short and the
+// long press from one hold.
+static const uint8_t RELEASE_MS_LONG = 60;
 static const uint32_t LOCKOUT_MS = 30;    // ignore the switch this long after any change
 static const char *DEVICE_NAME = "MIDI Button";
 
 #define FW_MAJOR 1
 #define FW_MINOR 1
-#define FW_PATCH 0
+#define FW_PATCH 1
 #define PROTOCOL_VERSION 2
 
 // ---------------------------------------------------------------- config
@@ -476,13 +480,15 @@ static void pollButton() {
     stableDown = true;
     lastEdge = now;
     buttonDown(now);
-  } else if (stableDown && upRun >= RELEASE_MS) {
+  } else if (stableDown && upRun >= (cfg.longOn ? RELEASE_MS_LONG : RELEASE_MS)) {
     stableDown = false;
     lastEdge = now;
     buttonUp();
   }
 
-  if (stableDown && pendingShort && now - pressedAt >= cfg.holdMs) {
+  // The switch must be closed right now. A press that is released is still "down" for
+  // RELEASE_MS_LONG while the release is confirmed, which must not count toward the hold.
+  if (stableDown && pendingShort && downRun > 0 && now - pressedAt >= cfg.holdMs) {
     pendingShort = false;
     longActive = true;
     sendLongOn();
