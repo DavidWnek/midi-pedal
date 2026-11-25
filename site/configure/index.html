@@ -737,8 +737,19 @@ function showActivity(d) {
   while (log.children.length > 5) log.lastChild.remove();
   const pad = isLong ? $("padLong") : $("pad");
   clearTimeout(pad._flash);
-  if (lit === "flash") { pad.classList.add("lit"); pad._flash = setTimeout(() => pad.classList.remove("lit"), 160); }
-  else pad.classList.toggle("lit", lit);
+  if (lit === "flash") { setLit(pad, true); pad._flash = setTimeout(() => setLit(pad, false), MIN_LIT_MS); }
+  else setLit(pad, lit);
+}
+
+// A short press with long press on sends its note on and off together at release, so
+// keep the pad lit for a moment after it lights, or the press is never seen.
+const MIN_LIT_MS = 160;
+function setLit(pad, on) {
+  clearTimeout(pad._unlit);
+  if (on) { pad._litAt = performance.now(); pad.classList.add("lit"); return; }
+  const wait = (pad._litAt || 0) + MIN_LIT_MS - performance.now();
+  if (wait > 0) pad._unlit = setTimeout(() => pad.classList.remove("lit"), wait);
+  else pad.classList.remove("lit");
 }
 
 // ---------------------------------------------------------------- views
